@@ -19,6 +19,7 @@ export default function Home() {
   }>({ isProcessing: false, progress: 0 });
   const audioRef = useRef<HTMLAudioElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -26,8 +27,30 @@ export default function Home() {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
+      if (urlDebounceRef.current) {
+        clearTimeout(urlDebounceRef.current);
+      }
     };
   }, []);
+
+  // Auto-extract text when URL changes with debounce
+  useEffect(() => {
+    if (urlDebounceRef.current) {
+      clearTimeout(urlDebounceRef.current);
+    }
+
+    if (url.trim() && !text.trim()) {
+      urlDebounceRef.current = setTimeout(() => {
+        handleExtractFromUrl();
+      }, 200);
+    }
+
+    return () => {
+      if (urlDebounceRef.current) {
+        clearTimeout(urlDebounceRef.current);
+      }
+    };
+  }, [url]);
 
   const handleExtractFromUrl = async () => {
     if (!url.trim()) return;
@@ -268,13 +291,6 @@ export default function Home() {
                     onChange={(e) => setUrl(e.target.value)}
                     disabled={text.trim() !== ''}
                   />
-                  <button
-                    onClick={handleExtractFromUrl}
-                    disabled={!url.trim() || isExtractingText || text.trim() !== ''}
-                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isExtractingText ? 'Extracting...' : 'Extract'}
-                  </button>
                 </div>
               </div>
 
