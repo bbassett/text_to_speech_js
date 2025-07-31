@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TextToSpeechClient, TextToSpeechLongAudioSynthesizeClient } from "@google-cloud/text-to-speech";
-import { Storage } from "@google-cloud/storage";
+import {
+  TextToSpeechClient,
+  TextToSpeechLongAudioSynthesizeClient,
+} from "@google-cloud/text-to-speech";
 
 const SHORT_TEXT_LIMIT = 5000;
+const LONG_TEXT_LIMIT = 1000000;
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,9 +19,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
 
-    if (text.length > 1000000) {
+    if (text.length > LONG_TEXT_LIMIT) {
       return NextResponse.json(
-        { error: "Text is too long (maximum 1,000,000 characters)" },
+        { error: `Text is too long (maximum ${LONG_TEXT_LIMIT} characters)` },
         { status: 400 }
       );
     }
@@ -122,8 +125,10 @@ async function handleLongAudio(
   };
 
   // Start long audio synthesis
-  const [operation] = await longAudioClient.synthesizeLongAudio(request_payload);
-  
+  const [operation] = await longAudioClient.synthesizeLongAudio(
+    request_payload
+  );
+
   if (!operation.name) {
     throw new Error("Failed to start long audio synthesis operation");
   }

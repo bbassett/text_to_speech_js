@@ -203,14 +203,12 @@ export default function Home() {
     }
   };
 
-  const clearText = () => {
+  const clearAll = () => {
     setText('');
-    setExtractedInfo(null);
-  };
-
-  const clearUrl = () => {
     setUrl('');
     setExtractedInfo(null);
+    setAudioUrl(null);
+    setError(null);
   };
 
   const downloadAudio = () => {
@@ -252,7 +250,7 @@ export default function Home() {
                   </label>
                   {url && (
                     <button
-                      onClick={clearUrl}
+                      onClick={clearAll}
                       className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
                     >
                       Clear
@@ -293,7 +291,7 @@ export default function Home() {
                   </label>
                   {text && (
                     <button
-                      onClick={clearText}
+                      onClick={clearAll}
                       className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
                     >
                       Clear
