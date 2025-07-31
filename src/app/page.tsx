@@ -12,6 +12,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [extractedInfo, setExtractedInfo] = useState<{title: string; originalLength: number; truncated: boolean} | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [autoConvert, setAutoConvert] = useState(false);
   const [longAudioProgress, setLongAudioProgress] = useState<{
     isProcessing: boolean;
     progress: number;
@@ -21,8 +22,9 @@ export default function Home() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load playback speed from cookie on mount
+  // Load playback speed and auto-convert from cookies on mount
   useEffect(() => {
     const savedSpeed = document.cookie
       .split('; ')
@@ -31,6 +33,15 @@ export default function Home() {
     
     if (savedSpeed) {
       setPlaybackSpeed(parseFloat(savedSpeed));
+    }
+
+    const savedAutoConvert = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('autoConvert='))
+      ?.split('=')[1];
+    
+    if (savedAutoConvert) {
+      setAutoConvert(savedAutoConvert === 'true');
     }
   }, []);
 
@@ -42,6 +53,9 @@ export default function Home() {
       }
       if (urlDebounceRef.current) {
         clearTimeout(urlDebounceRef.current);
+      }
+      if (autoConvertDebounceRef.current) {
+        clearTimeout(autoConvertDebounceRef.current);
       }
     };
   }, []);
@@ -57,6 +71,13 @@ export default function Home() {
     date.setFullYear(date.getFullYear() + 1);
     document.cookie = `playbackSpeed=${playbackSpeed}; expires=${date.toUTCString()}; path=/`;
   }, [playbackSpeed, audioUrl]);
+
+  // Save auto-convert state to cookie
+  useEffect(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + 1);
+    document.cookie = `autoConvert=${autoConvert}; expires=${date.toUTCString()}; path=/`;
+  }, [autoConvert]);
 
   // Auto-extract text when URL changes with debounce
   useEffect(() => {
@@ -76,6 +97,25 @@ export default function Home() {
       }
     };
   }, [url]);
+
+  // Auto-convert to speech when text changes with debounce
+  useEffect(() => {
+    if (autoConvertDebounceRef.current) {
+      clearTimeout(autoConvertDebounceRef.current);
+    }
+
+    if (autoConvert && text.trim() && !isLoading && !longAudioProgress.isProcessing) {
+      autoConvertDebounceRef.current = setTimeout(() => {
+        handleTextToSpeech();
+      }, 1000);
+    }
+
+    return () => {
+      if (autoConvertDebounceRef.current) {
+        clearTimeout(autoConvertDebounceRef.current);
+      }
+    };
+  }, [text, autoConvert]);
 
   const handleExtractFromUrl = async () => {
     if (!url.trim()) return;
@@ -432,17 +472,36 @@ export default function Home() {
             </div>
           )}
           
-          <button
-            onClick={handleTextToSpeech}
-            disabled={(!text.trim() && !url.trim()) || isLoading || isExtractingText || longAudioProgress.isProcessing}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {longAudioProgress.isProcessing ? 'Processing Long Audio...' :
-             isLoading ? 'Generating Speech...' : 
-             isExtractingText ? 'Extracting Text...' :
-             (url.trim() && !text.trim()) ? 'Extract & Convert to Speech' : 
-             'Convert to Speech'}
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleTextToSpeech}
+              disabled={(!text.trim() && !url.trim()) || isLoading || isExtractingText || longAudioProgress.isProcessing}
+              className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {longAudioProgress.isProcessing ? 'Processing Long Audio...' :
+               isLoading ? 'Generating Speech...' : 
+               isExtractingText ? 'Extracting Text...' :
+               (url.trim() && !text.trim()) ? 'Extract & Convert to Speech' : 
+               'Convert to Speech'}
+            </button>
+            
+            {/* Auto-convert toggle */}
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoConvert}
+                onChange={(e) => setAutoConvert(e.target.checked)}
+                className="sr-only"
+              />
+              <div className="relative">
+                <div className={`block w-10 h-6 rounded-full ${autoConvert ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${autoConvert ? 'transform translate-x-4' : ''}`}></div>
+              </div>
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                Auto
+              </span>
+            </label>
+          </div>
           
           {audioUrl && (
             <div className="mt-6">
