@@ -6,7 +6,6 @@ export default function Home() {
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
   const [voice, setVoice] = useState('en-US-Wavenet-D');
-  const [speed, setSpeed] = useState(1.0);
   const [isLoading, setIsLoading] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -162,7 +161,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: textToConvert, voice, speed }),
+        body: JSON.stringify({ text: textToConvert, voice }),
       });
 
       if (!response.ok) {
@@ -362,27 +361,6 @@ export default function Home() {
             </select>
           </div>
           
-          <div className="mb-4">
-            <label htmlFor="speed-slider" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Speed: {speed}x
-            </label>
-            <input
-              id="speed-slider"
-              type="range"
-              min="0.25"
-              max="4.0"
-              step="0.25"
-              value={speed}
-              onChange={(e) => setSpeed(parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-            />
-            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-              <span>0.25x</span>
-              <span>1x</span>
-              <span>2x</span>
-              <span>4x</span>
-            </div>
-          </div>
           
           {error && (
             <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 rounded-md">
