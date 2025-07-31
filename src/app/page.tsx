@@ -11,6 +11,7 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [extractedInfo, setExtractedInfo] = useState<{title: string; originalLength: number; truncated: boolean} | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [longAudioProgress, setLongAudioProgress] = useState<{
     isProcessing: boolean;
     progress: number;
@@ -20,6 +21,18 @@ export default function Home() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load playback speed from cookie on mount
+  useEffect(() => {
+    const savedSpeed = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('playbackSpeed='))
+      ?.split('=')[1];
+    
+    if (savedSpeed) {
+      setPlaybackSpeed(parseFloat(savedSpeed));
+    }
+  }, []);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -32,6 +45,18 @@ export default function Home() {
       }
     };
   }, []);
+
+  // Apply playback speed to audio element and save to cookie
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+    
+    // Save to cookie with 1 year expiry
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + 1);
+    document.cookie = `playbackSpeed=${playbackSpeed}; expires=${date.toUTCString()}; path=/`;
+  }, [playbackSpeed, audioUrl]);
 
   // Auto-extract text when URL changes with debounce
   useEffect(() => {
@@ -427,6 +452,41 @@ export default function Home() {
                 className="w-full"
                 src={audioUrl}
               />
+              
+              {/* Playback Speed Controls */}
+              <div className="mt-3 flex justify-center space-x-2">
+                <button
+                  onClick={() => setPlaybackSpeed(1)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    playbackSpeed === 1
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  1x
+                </button>
+                <button
+                  onClick={() => setPlaybackSpeed(1.5)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    playbackSpeed === 1.5
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  1.5x
+                </button>
+                <button
+                  onClick={() => setPlaybackSpeed(2)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    playbackSpeed === 2
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  2x
+                </button>
+              </div>
+              
               <button
                 onClick={downloadAudio}
                 className="mt-3 w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
