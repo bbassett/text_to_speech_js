@@ -35,10 +35,9 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Calculate progress if available
-      const progress = operation.metadata?.progressPercentage || 0;
       return NextResponse.json({
         status: "processing",
-        progress: progress,
+        progress: 0,
       });
     }
   } catch (error) {

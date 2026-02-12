@@ -1,16 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from "react";
 
 export default function Home() {
-  const [text, setText] = useState('');
-  const [url, setUrl] = useState('');
-  const [voice, setVoice] = useState('en-US-Wavenet-D');
+  const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [voice, setVoice] = useState("en-US-Wavenet-D");
   const [isLoading, setIsLoading] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [extractedInfo, setExtractedInfo] = useState<{title: string; originalLength: number; truncated: boolean} | null>(null);
+  const [extractedInfo, setExtractedInfo] = useState<{
+    title: string;
+    originalLength: number;
+    truncated: boolean;
+  } | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [autoConvert, setAutoConvert] = useState(false);
   const [longAudioProgress, setLongAudioProgress] = useState<{
@@ -27,21 +31,21 @@ export default function Home() {
   // Load playback speed and auto-convert from cookies on mount
   useEffect(() => {
     const savedSpeed = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('playbackSpeed='))
-      ?.split('=')[1];
-    
+      .split("; ")
+      .find((row) => row.startsWith("playbackSpeed="))
+      ?.split("=")[1];
+
     if (savedSpeed) {
       setPlaybackSpeed(parseFloat(savedSpeed));
     }
 
     const savedAutoConvert = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('autoConvert='))
-      ?.split('=')[1];
-    
+      .split("; ")
+      .find((row) => row.startsWith("autoConvert="))
+      ?.split("=")[1];
+
     if (savedAutoConvert) {
-      setAutoConvert(savedAutoConvert === 'true');
+      setAutoConvert(savedAutoConvert === "true");
     }
   }, []);
 
@@ -65,7 +69,7 @@ export default function Home() {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed;
     }
-    
+
     // Save to cookie with 1 year expiry
     const date = new Date();
     date.setFullYear(date.getFullYear() + 1);
@@ -104,7 +108,12 @@ export default function Home() {
       clearTimeout(autoConvertDebounceRef.current);
     }
 
-    if (autoConvert && text.trim() && !isLoading && !longAudioProgress.isProcessing) {
+    if (
+      autoConvert &&
+      text.trim() &&
+      !isLoading &&
+      !longAudioProgress.isProcessing
+    ) {
       autoConvertDebounceRef.current = setTimeout(() => {
         handleTextToSpeech();
       }, 1000);
@@ -119,23 +128,23 @@ export default function Home() {
 
   const handleExtractFromUrl = async () => {
     if (!url.trim()) return;
-    
+
     setIsExtractingText(true);
     setError(null);
     setExtractedInfo(null);
-    
+
     try {
-      const response = await fetch('/api/url-to-text', {
-        method: 'POST',
+      const response = await fetch("/api/url-to-text", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ url }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to extract text from URL');
+        throw new Error(errorData.error || "Failed to extract text from URL");
       }
 
       const data = await response.json();
@@ -143,33 +152,40 @@ export default function Home() {
       setExtractedInfo({
         title: data.title,
         originalLength: data.originalLength,
-        truncated: data.truncated
+        truncated: data.truncated,
       });
     } catch (error) {
-      console.error('Error extracting text:', error);
-      setError(error instanceof Error ? error.message : 'Failed to extract text from URL');
+      console.error("Error extracting text:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to extract text from URL",
+      );
     } finally {
       setIsExtractingText(false);
     }
   };
 
-  const pollLongAudioStatus = async (operationName: string, fileName: string) => {
+  const pollLongAudioStatus = async (
+    operationName: string,
+    fileName: string,
+  ) => {
     try {
-      const response = await fetch('/api/tts-status', {
-        method: 'POST',
+      const response = await fetch("/api/tts-status", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ operationName }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to check operation status');
+        throw new Error("Failed to check operation status");
       }
 
       const data = await response.json();
 
-      if (data.status === 'completed') {
+      if (data.status === "completed") {
         // Stop polling
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
@@ -178,91 +194,91 @@ export default function Home() {
 
         // Download the audio file
         await downloadLongAudio(fileName);
-        
+
         setLongAudioProgress({ isProcessing: false, progress: 100 });
-      } else if (data.status === 'error') {
+      } else if (data.status === "error") {
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
         }
         setLongAudioProgress({ isProcessing: false, progress: 0 });
-        setError(data.error || 'Long audio synthesis failed');
-      } else if (data.status === 'processing') {
-        setLongAudioProgress(prev => ({ 
-          ...prev, 
-          progress: data.progress || prev.progress 
+        setError(data.error || "Long audio synthesis failed");
+      } else if (data.status === "processing") {
+        setLongAudioProgress((prev) => ({
+          ...prev,
+          progress: data.progress || prev.progress,
         }));
       }
     } catch (error) {
-      console.error('Error polling status:', error);
+      console.error("Error polling status:", error);
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
       setLongAudioProgress({ isProcessing: false, progress: 0 });
-      setError('Failed to check audio generation status');
+      setError("Failed to check audio generation status");
     }
   };
 
   const downloadLongAudio = async (fileName: string) => {
     try {
-      const response = await fetch('/api/download-audio', {
-        method: 'POST',
+      const response = await fetch("/api/download-audio", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ fileName }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to download audio');
+        throw new Error("Failed to download audio");
       }
 
       const blob = await response.blob();
       const audioObjectUrl = URL.createObjectURL(blob);
       setAudioUrl(audioObjectUrl);
     } catch (error) {
-      console.error('Error downloading audio:', error);
-      setError('Failed to download generated audio');
+      console.error("Error downloading audio:", error);
+      setError("Failed to download generated audio");
     }
   };
 
   const handleTextToSpeech = async () => {
-    let textToConvert = text;
-    
+    const textToConvert = text;
+
     // If URL is provided but text is empty, extract text first
     if (url.trim() && !text.trim()) {
       await handleExtractFromUrl();
       return; // Let the user review the extracted text before converting
     }
-    
+
     if (!textToConvert.trim()) return;
-    
+
     setIsLoading(true);
     setError(null);
     setAudioUrl(null); // Clear previous audio
     setLongAudioProgress({ isProcessing: false, progress: 0 });
-    
+
     try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
+      const response = await fetch("/api/tts", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ text: textToConvert, voice }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate speech');
+        throw new Error(errorData.error || "Failed to generate speech");
       }
 
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType?.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+
+      if (contentType?.includes("application/json")) {
         // Long audio response with operation details
         const data = await response.json();
-        
+
         if (data.isLongAudio) {
           setLongAudioProgress({
             isProcessing: true,
@@ -283,16 +299,18 @@ export default function Home() {
         setAudioUrl(audioObjectUrl);
       }
     } catch (error) {
-      console.error('Error generating speech:', error);
-      setError(error instanceof Error ? error.message : 'Failed to generate speech');
+      console.error("Error generating speech:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to generate speech",
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   const clearAll = () => {
-    setText('');
-    setUrl('');
+    setText("");
+    setUrl("");
     setExtractedInfo(null);
     setAudioUrl(null);
     setError(null);
@@ -300,10 +318,10 @@ export default function Home() {
 
   const downloadAudio = () => {
     if (audioUrl) {
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = audioUrl;
       // Use appropriate file extension based on the audio type
-      const fileName = text.length > 5000 ? 'speech.wav' : 'speech.mp3';
+      const fileName = text.length > 5000 ? "speech.wav" : "speech.mp3";
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
@@ -319,20 +337,24 @@ export default function Home() {
             Text to Speech
           </h1>
         </div>
-        
+
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
           <div className="mb-6">
             <div className="flex flex-col space-y-4">
               <div className="flex justify-center mb-4">
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Choose input method below - filling one field will disable the other
+                  Choose input method below - filling one field will disable the
+                  other
                 </div>
               </div>
-              
+
               {/* URL Input */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label htmlFor="url-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label
+                    htmlFor="url-input"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
                     Enter URL to extract and convert text:
                   </label>
                   {url && (
@@ -349,12 +371,14 @@ export default function Home() {
                     id="url-input"
                     type="url"
                     className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white ${
-                      text.trim() ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : 'border-gray-300 dark:border-gray-600'
+                      text.trim()
+                        ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                        : "border-gray-300 dark:border-gray-600"
                     }`}
                     placeholder="https://example.com/article"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    disabled={text.trim() !== ''}
+                    disabled={text.trim() !== ""}
                   />
                 </div>
               </div>
@@ -366,7 +390,10 @@ export default function Home() {
               {/* Text Input */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label htmlFor="text-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label
+                    htmlFor="text-input"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
                     Enter text directly:
                   </label>
                   {text && (
@@ -382,12 +409,14 @@ export default function Home() {
                   id="text-input"
                   rows={4}
                   className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white ${
-                    url.trim() ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 cursor-not-allowed' : 'border-gray-300 dark:border-gray-600'
+                    url.trim()
+                      ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                      : "border-gray-300 dark:border-gray-600"
                   }`}
                   placeholder="Type your text here..."
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  disabled={url.trim() !== ''}
+                  disabled={url.trim() !== ""}
                 />
               </div>
             </div>
@@ -401,15 +430,18 @@ export default function Home() {
               </h3>
               <p className="text-xs text-blue-600 dark:text-blue-400">
                 Original length: {extractedInfo.originalLength} characters
-                {extractedInfo.truncated && ' (truncated to 5000 characters)'}
-                {extractedInfo.originalLength > 5000 && 
-                  ' - Long texts will use advanced processing'}
+                {extractedInfo.truncated && " (truncated to 5000 characters)"}
+                {extractedInfo.originalLength > 5000 &&
+                  " - Long texts will use advanced processing"}
               </p>
             </div>
           )}
-          
+
           <div className="mb-4">
-            <label htmlFor="voice-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label
+              htmlFor="voice-select"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            >
               Voice:
             </label>
             <select
@@ -421,28 +453,47 @@ export default function Home() {
               <optgroup label="English (US) - WaveNet">
                 <option value="en-US-Wavenet-A">en-US-Wavenet-A (Male)</option>
                 <option value="en-US-Wavenet-B">en-US-Wavenet-B (Male)</option>
-                <option value="en-US-Wavenet-C">en-US-Wavenet-C (Female)</option>
+                <option value="en-US-Wavenet-C">
+                  en-US-Wavenet-C (Female)
+                </option>
                 <option value="en-US-Wavenet-D">en-US-Wavenet-D (Male)</option>
-                <option value="en-US-Wavenet-E">en-US-Wavenet-E (Female)</option>
-                <option value="en-US-Wavenet-F">en-US-Wavenet-F (Female)</option>
+                <option value="en-US-Wavenet-E">
+                  en-US-Wavenet-E (Female)
+                </option>
+                <option value="en-US-Wavenet-F">
+                  en-US-Wavenet-F (Female)
+                </option>
               </optgroup>
               <optgroup label="English (US) - Standard">
-                <option value="en-US-Standard-A">en-US-Standard-A (Male)</option>
-                <option value="en-US-Standard-B">en-US-Standard-B (Male)</option>
-                <option value="en-US-Standard-C">en-US-Standard-C (Female)</option>
-                <option value="en-US-Standard-D">en-US-Standard-D (Male)</option>
-                <option value="en-US-Standard-E">en-US-Standard-E (Female)</option>
+                <option value="en-US-Standard-A">
+                  en-US-Standard-A (Male)
+                </option>
+                <option value="en-US-Standard-B">
+                  en-US-Standard-B (Male)
+                </option>
+                <option value="en-US-Standard-C">
+                  en-US-Standard-C (Female)
+                </option>
+                <option value="en-US-Standard-D">
+                  en-US-Standard-D (Male)
+                </option>
+                <option value="en-US-Standard-E">
+                  en-US-Standard-E (Female)
+                </option>
               </optgroup>
               <optgroup label="English (UK)">
-                <option value="en-GB-Wavenet-A">en-GB-Wavenet-A (Female)</option>
+                <option value="en-GB-Wavenet-A">
+                  en-GB-Wavenet-A (Female)
+                </option>
                 <option value="en-GB-Wavenet-B">en-GB-Wavenet-B (Male)</option>
-                <option value="en-GB-Wavenet-C">en-GB-Wavenet-C (Female)</option>
+                <option value="en-GB-Wavenet-C">
+                  en-GB-Wavenet-C (Female)
+                </option>
                 <option value="en-GB-Wavenet-D">en-GB-Wavenet-D (Male)</option>
               </optgroup>
             </select>
           </div>
-          
-          
+
           {error && (
             <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-300 rounded-md">
               {error}
@@ -467,24 +518,34 @@ export default function Home() {
                 ></div>
               </div>
               <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                This may take several minutes for long texts. The page will automatically update when ready.
+                This may take several minutes for long texts. The page will
+                automatically update when ready.
               </p>
             </div>
           )}
-          
+
           <div className="flex items-center space-x-3">
             <button
               onClick={handleTextToSpeech}
-              disabled={(!text.trim() && !url.trim()) || isLoading || isExtractingText || longAudioProgress.isProcessing}
+              disabled={
+                (!text.trim() && !url.trim()) ||
+                isLoading ||
+                isExtractingText ||
+                longAudioProgress.isProcessing
+              }
               className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {longAudioProgress.isProcessing ? 'Processing Long Audio...' :
-               isLoading ? 'Generating Speech...' : 
-               isExtractingText ? 'Extracting Text...' :
-               (url.trim() && !text.trim()) ? 'Extract & Convert to Speech' : 
-               'Convert to Speech'}
+              {longAudioProgress.isProcessing
+                ? "Processing Long Audio..."
+                : isLoading
+                  ? "Generating Speech..."
+                  : isExtractingText
+                    ? "Extracting Text..."
+                    : url.trim() && !text.trim()
+                      ? "Extract & Convert to Speech"
+                      : "Convert to Speech"}
             </button>
-            
+
             {/* Auto-convert toggle */}
             <label className="flex items-center cursor-pointer">
               <input
@@ -494,15 +555,19 @@ export default function Home() {
                 className="sr-only"
               />
               <div className="relative">
-                <div className={`block w-10 h-6 rounded-full ${autoConvert ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
-                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${autoConvert ? 'transform translate-x-4' : ''}`}></div>
+                <div
+                  className={`block w-10 h-6 rounded-full ${autoConvert ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+                ></div>
+                <div
+                  className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${autoConvert ? "transform translate-x-4" : ""}`}
+                ></div>
               </div>
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                 Auto
               </span>
             </label>
           </div>
-          
+
           {audioUrl && (
             <div className="mt-6">
               <audio
@@ -511,15 +576,15 @@ export default function Home() {
                 className="w-full"
                 src={audioUrl}
               />
-              
+
               {/* Playback Speed Controls */}
               <div className="mt-3 flex justify-center space-x-2">
                 <button
                   onClick={() => setPlaybackSpeed(1)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     playbackSpeed === 1
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
                   }`}
                 >
                   1x
@@ -528,8 +593,8 @@ export default function Home() {
                   onClick={() => setPlaybackSpeed(1.5)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     playbackSpeed === 1.5
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
                   }`}
                 >
                   1.5x
@@ -538,14 +603,14 @@ export default function Home() {
                   onClick={() => setPlaybackSpeed(2)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     playbackSpeed === 2
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
                   }`}
                 >
                   2x
                 </button>
               </div>
-              
+
               <button
                 onClick={downloadAudio}
                 className="mt-3 w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
