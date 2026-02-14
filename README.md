@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This app is 100% vibe coded, and is not production ready, I haven't even looked at this code beyond a couple files.
+
+A Next.js web app that converts text (or URLs) to speech using Google Cloud Text-to-Speech. Supports short and long-form audio synthesis with automatic GCS storage for longer files.
+
+## Google Cloud Setup
+
+1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the **Cloud Text-to-Speech API** and **Cloud Storage API**
+3. Create a **Service Account** (IAM & Admin > Service Accounts), grant it the `Cloud Text-to-Speech Admin` and `Storage Object Admin` roles
+4. Generate a JSON key for the service account and save it to the project root (e.g. `google-credentials.json`)
+5. Create a **Cloud Storage bucket** for long audio output
+
+## Configuration
+
+Copy `.env.example` to `.env.local` and fill in your values:
+
+```
+GOOGLE_CLOUD_PROJECT_ID=your_project_id
+GOOGLE_APPLICATION_CREDENTIALS=./credentials/google-credentials.json
+GOOGLE_CLOUD_STORAGE_BUCKET=your_bucket_name
+```
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to start TTS'ing.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Docker
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+docker compose up
+```

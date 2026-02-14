@@ -10,7 +10,7 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-credentials.json
     volumes:
       - ./credentials:/app/credentials:ro
     restart: unless-stopped
