@@ -3,8 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: text_to_speech
     ports:
-      - "3000:3000"
+      - "8002:3000"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
