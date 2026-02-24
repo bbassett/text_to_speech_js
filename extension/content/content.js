@@ -356,6 +356,8 @@ const WIDGET_HTML = `
   let shadowHost = null;
   let shadowRoot = null;
   let isMinimized = false;
+  let pollingInterval = null;
+  let currentAudioUrl = null;
 
   function createWidget() {
     // Create Shadow DOM host
@@ -415,6 +417,17 @@ const WIDGET_HTML = `
       });
     });
 
+    // Wire up generate button
+    const generateBtn = shadowRoot.getElementById("tts-generate");
+    generateBtn.addEventListener("click", handleGenerate);
+
+    // Wire up retry button
+    const retryBtn = shadowRoot.getElementById("tts-retry");
+    retryBtn.addEventListener("click", () => {
+      shadowRoot.getElementById("tts-error").classList.remove("visible");
+      handleGenerate();
+    });
+
     // Load saved preferences (placeholder for Task 6)
     loadPreferences();
 
@@ -423,6 +436,17 @@ const WIDGET_HTML = `
   }
 
   function destroyWidget() {
+    // Stop polling if active
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
+
+    if (currentAudioUrl) {
+      URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = null;
+    }
+
     if (shadowRoot) {
       const audio = shadowRoot.getElementById("tts-audio");
       if (audio) {
@@ -529,8 +553,173 @@ const WIDGET_HTML = `
   }
 
   async function handleGenerate() {
-    // Placeholder — implemented in Task 5
-    console.log("TTS Extension: handleGenerate called, text length:", getTextToConvert().length);
+    const text = getTextToConvert();
+    if (!text) return;
+
+    const generateBtn = shadowRoot.getElementById("tts-generate");
+    const voiceSelect = shadowRoot.getElementById("tts-voice");
+    const errorEl = shadowRoot.getElementById("tts-error");
+    const audioSection = shadowRoot.getElementById("tts-audio-section");
+    const progressSection = shadowRoot.getElementById("tts-progress");
+
+    // Reset state
+    errorEl.classList.remove("visible");
+    audioSection.classList.remove("visible");
+    progressSection.classList.remove("visible");
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Generating...";
+
+    // Clean up previous audio
+    if (currentAudioUrl) {
+      URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = null;
+    }
+
+    const voice = voiceSelect.value;
+    const speed = parseFloat(
+      shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
+    );
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice, speed }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate speech");
+      }
+
+      const contentType = response.headers.get("content-type");
+
+      if (contentType?.includes("application/json")) {
+        // Long audio — start polling
+        const data = await response.json();
+        if (data.isLongAudio) {
+          startPolling(data.operationName, data.outputFileName);
+        }
+      } else {
+        // Short audio — play directly
+        const blob = await response.blob();
+        playAudio(blob);
+      }
+    } catch (err) {
+      showError(err.message || "Failed to generate speech");
+    } finally {
+      // Only reset button if we're not polling (polling manages its own button state)
+      if (!pollingInterval) {
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate Speech";
+      }
+    }
+  }
+
+  function playAudio(blob) {
+    const audioSection = shadowRoot.getElementById("tts-audio-section");
+    const audioEl = shadowRoot.getElementById("tts-audio");
+
+    currentAudioUrl = URL.createObjectURL(blob);
+    audioEl.src = currentAudioUrl;
+    audioEl.playbackRate = parseFloat(
+      shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
+    );
+
+    audioSection.classList.add("visible");
+    audioEl.play();
+  }
+
+  function startPolling(operationName, fileName) {
+    const progressSection = shadowRoot.getElementById("tts-progress");
+    const progressLabel = shadowRoot.getElementById("tts-progress-label");
+    const progressFill = shadowRoot.getElementById("tts-progress-fill");
+    const generateBtn = shadowRoot.getElementById("tts-generate");
+
+    progressSection.classList.add("visible");
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Processing...";
+
+    let pollCount = 0;
+    const maxPolls = 100; // ~5 minutes at 3s intervals
+
+    pollingInterval = setInterval(async () => {
+      pollCount++;
+      if (pollCount > maxPolls) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        progressSection.classList.remove("visible");
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate Speech";
+        showError("Audio generation timed out. Please try again.");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/tts-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operationName }),
+        });
+
+        if (!response.ok) throw new Error("Failed to check status");
+
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          progressFill.style.width = "100%";
+          progressLabel.textContent = "Processing long audio... 100%";
+          await downloadLongAudio(fileName);
+          progressSection.classList.remove("visible");
+          generateBtn.disabled = false;
+          generateBtn.textContent = "Generate Speech";
+        } else if (data.status === "error") {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+          progressSection.classList.remove("visible");
+          generateBtn.disabled = false;
+          generateBtn.textContent = "Generate Speech";
+          showError(data.error || "Audio generation failed");
+        } else {
+          const progress = data.progress || 0;
+          progressFill.style.width = `${progress}%`;
+          progressLabel.textContent = `Processing long audio... ${progress}%`;
+        }
+      } catch (err) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        progressSection.classList.remove("visible");
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate Speech";
+        showError("Lost connection while checking audio status");
+      }
+    }, 3000);
+  }
+
+  async function downloadLongAudio(fileName) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/download-audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName }),
+      });
+
+      if (!response.ok) throw new Error("Failed to download audio");
+
+      const blob = await response.blob();
+      playAudio(blob);
+    } catch (err) {
+      showError("Failed to download generated audio");
+    }
+  }
+
+  function showError(message) {
+    const errorEl = shadowRoot.getElementById("tts-error");
+    const errorMsg = shadowRoot.getElementById("tts-error-msg");
+    errorMsg.textContent = message;
+    errorEl.classList.add("visible");
   }
 
   function loadPreferences() {
