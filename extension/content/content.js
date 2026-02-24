@@ -2,6 +2,7 @@ const BACKEND_URL = "http://localhost:3000";
 
 const WIDGET_CSS = `
   :host {
+    all: initial;
     position: fixed;
     bottom: 20px;
     right: 20px;
@@ -116,6 +117,7 @@ const WIDGET_CSS = `
     padding: 6px 8px;
     color: #e5e7eb;
     font-size: 12px;
+    font-family: inherit;
   }
 
   .tts-speed-group {
@@ -130,6 +132,7 @@ const WIDGET_CSS = `
     padding: 5px 10px;
     font-size: 11px;
     cursor: pointer;
+    font-family: inherit;
   }
 
   .tts-speed-btn:first-child {
@@ -157,6 +160,7 @@ const WIDGET_CSS = `
     font-weight: 600;
     cursor: pointer;
     margin-bottom: 12px;
+    font-family: inherit;
   }
 
   .tts-generate-btn:hover {
@@ -191,6 +195,7 @@ const WIDGET_CSS = `
     border-radius: 6px;
     font-size: 12px;
     cursor: pointer;
+    font-family: inherit;
   }
 
   .tts-download-btn:hover {
@@ -258,6 +263,7 @@ const WIDGET_CSS = `
     font-size: 11px;
     cursor: pointer;
     margin-left: 8px;
+    font-family: inherit;
   }
 
   .tts-retry-btn:hover {
@@ -273,6 +279,7 @@ const WIDGET_CSS = `
     cursor: pointer;
     padding: 0;
     margin-top: 4px;
+    font-family: inherit;
   }
 
   .tts-paste-toggle:hover {
@@ -358,6 +365,8 @@ const WIDGET_HTML = `
   let isMinimized = false;
   let pollingInterval = null;
   let currentAudioUrl = null;
+  let extractedText = "";
+  let articleTitle = "";
 
   function createWidget() {
     // Create Shadow DOM host
@@ -416,6 +425,10 @@ const WIDGET_HTML = `
         btn.classList.add("active");
         const speed = parseFloat(btn.dataset.speed);
         chrome.storage.sync.set({ playbackSpeed: speed });
+        const audioEl = shadowRoot.getElementById("tts-audio");
+        if (audioEl) {
+          audioEl.playbackRate = speed;
+        }
       });
     });
 
@@ -483,6 +496,8 @@ const WIDGET_HTML = `
     }
 
     isMinimized = false;
+    extractedText = "";
+    articleTitle = "";
     window.__ttsExtensionInjected = false;
   }
 
@@ -523,8 +538,8 @@ const WIDGET_HTML = `
         pasteArea.style.display = "none";
 
         // Store full text for TTS
-        window.__ttsExtractedText = article.textContent.trim();
-        window.__ttsArticleTitle = article.title || "";
+        extractedText = article.textContent.trim();
+        articleTitle = article.title || "";
 
         // Auto-generate
         generateBtn.textContent = "Generate Speech";
@@ -570,7 +585,7 @@ const WIDGET_HTML = `
     if (pasteArea.style.display !== "none" && pasteArea.value.trim()) {
       return pasteArea.value.trim();
     }
-    return window.__ttsExtractedText || "";
+    return extractedText;
   }
 
   async function handleGenerate() {
@@ -609,8 +624,14 @@ const WIDGET_HTML = `
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate speech");
+        let errorMessage = "Failed to generate speech";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Response wasn't JSON (e.g., proxy error)
+        }
+        throw new Error(errorMessage);
       }
 
       const contentType = response.headers.get("content-type");
