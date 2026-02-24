@@ -28,6 +28,7 @@ export default function Home() {
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Uint8Array[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const TTS_DEBUG = true;
   const debugLog = (...args: unknown[]) => {
@@ -66,6 +67,9 @@ export default function Home() {
       }
       if (autoConvertDebounceRef.current) {
         clearTimeout(autoConvertDebounceRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -274,6 +278,7 @@ export default function Home() {
         let firstChunk = true;
         const queue: Uint8Array[] = [];
         let appending = false;
+        let onDrain: (() => void) | null = null;
 
         function appendNext() {
           if (appending || queue.length === 0) return;
@@ -293,7 +298,12 @@ export default function Home() {
         sourceBuffer.addEventListener("updateend", () => {
           appending = false;
           debugLog("SourceBuffer updateend");
-          appendNext();
+          if (queue.length > 0) {
+            appendNext();
+          } else if (onDrain) {
+            onDrain();
+            onDrain = null;
+          }
         });
 
         try {
@@ -306,15 +316,7 @@ export default function Home() {
                   if (!appending && queue.length === 0) {
                     res();
                   } else {
-                    sourceBuffer.addEventListener("updateend", function handler() {
-                      if (queue.length === 0) {
-                        sourceBuffer.removeEventListener("updateend", handler);
-                        res();
-                      } else {
-                        appendNext();
-                      }
-                    });
-                    appendNext();
+                    onDrain = res;
                   }
                 });
               await waitForAppends();
@@ -373,8 +375,17 @@ export default function Home() {
       return;
     }
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setIsLoading(true);
     setError(null);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
     setAudioUrl(null);
     setLongAudioProgress({ isProcessing: false, progress: 0 });
     audioChunksRef.current = [];
@@ -386,6 +397,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: textToConvert, voice, speed: playbackSpeed }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -405,6 +417,10 @@ export default function Home() {
       const msUrl = await playStreamingAudio(response, audioRef.current);
       setAudioUrl(msUrl);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        debugLog("Request aborted");
+        return;
+      }
       console.error("Error generating speech:", error);
       setError(error instanceof Error ? error.message : "Failed to generate speech");
     } finally {
@@ -416,6 +432,9 @@ export default function Home() {
     setText("");
     setUrl("");
     setExtractedInfo(null);
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
     setAudioUrl(null);
     setError(null);
   };
@@ -673,8 +692,7 @@ export default function Home() {
             </label>
           </div>
 
-          {audioUrl && (
-            <div className="mt-6">
+          <div className={`mt-6 ${audioUrl ? "" : "hidden"}`}>
               <audio
                 ref={audioRef}
                 controls
@@ -721,8 +739,7 @@ export default function Home() {
               >
                 Download Audio
               </button>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
