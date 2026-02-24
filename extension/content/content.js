@@ -418,7 +418,7 @@ const WIDGET_HTML = `
     // Load saved preferences (placeholder for Task 6)
     loadPreferences();
 
-    // Extract text from page (placeholder for Task 4)
+    // Extract text from page
     extractText();
   }
 
@@ -458,9 +458,79 @@ const WIDGET_HTML = `
   }
 
   function extractText() {
-    // Placeholder — implemented in Task 4
     const preview = shadowRoot.getElementById("tts-text-preview");
-    preview.textContent = "Text extraction will be implemented next...";
+    const pasteArea = shadowRoot.getElementById("tts-paste-area");
+    const pasteToggle = shadowRoot.getElementById("tts-paste-toggle");
+    const generateBtn = shadowRoot.getElementById("tts-generate");
+
+    try {
+      const docClone = document.cloneNode(true);
+      const article = new ReadabilityModule(docClone).parse();
+
+      if (article && article.textContent && article.textContent.trim().length > 0) {
+        // Successful extraction
+        const titleHtml = article.title
+          ? `<div class="tts-article-title">${escapeHtml(article.title)}</div>`
+          : "";
+        const previewText = article.textContent.trim().substring(0, 300);
+        preview.innerHTML = titleHtml + escapeHtml(previewText) + (article.textContent.length > 300 ? "..." : "");
+        preview.style.display = "block";
+        pasteArea.style.display = "none";
+
+        // Store full text for TTS
+        window.__ttsExtractedText = article.textContent.trim();
+        window.__ttsArticleTitle = article.title || "";
+
+        // Auto-generate
+        generateBtn.textContent = "Generate Speech";
+        handleGenerate();
+      } else {
+        // Extraction failed — show paste area
+        showPasteFallback("Couldn't extract text from this page.");
+      }
+    } catch (err) {
+      console.error("TTS Extension: Readability error", err);
+      showPasteFallback("Couldn't extract text from this page.");
+    }
+  }
+
+  function showPasteFallback(message) {
+    const preview = shadowRoot.getElementById("tts-text-preview");
+    const pasteArea = shadowRoot.getElementById("tts-paste-area");
+    const pasteToggle = shadowRoot.getElementById("tts-paste-toggle");
+
+    preview.style.display = "none";
+    pasteArea.style.display = "block";
+    pasteToggle.style.display = "none";
+
+    // Create and insert message element
+    const existingMsg = shadowRoot.querySelector(".tts-extraction-msg");
+    if (!existingMsg) {
+      const extractionMsg = document.createElement("div");
+      extractionMsg.className = "tts-extraction-msg";
+      extractionMsg.textContent = message;
+      pasteArea.parentNode.insertBefore(extractionMsg, pasteArea);
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function getTextToConvert() {
+    const pasteArea = shadowRoot.getElementById("tts-paste-area");
+    // Use pasted text if paste area is visible and has content
+    if (pasteArea.style.display !== "none" && pasteArea.value.trim()) {
+      return pasteArea.value.trim();
+    }
+    return window.__ttsExtractedText || "";
+  }
+
+  async function handleGenerate() {
+    // Placeholder — implemented in Task 5
+    console.log("TTS Extension: handleGenerate called, text length:", getTextToConvert().length);
   }
 
   function loadPreferences() {
