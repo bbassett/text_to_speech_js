@@ -1,4 +1,4 @@
-const BACKEND_URL = "https://tts.brandonbassett.com";
+const BACKEND_URL = "https://tts.brandonbassett.xyz";
 
 const WIDGET_CSS = `
   :host {
@@ -367,6 +367,15 @@ const WIDGET_HTML = `
   let currentAudioUrl = null;
   let extractedText = "";
   let articleTitle = "";
+  let audioChunks = [];
+
+  const TTS_DEBUG = true;
+
+  function debugLog(...args) {
+    if (TTS_DEBUG) {
+      console.log("[tts-ext]", ...args);
+    }
+  }
 
   function createWidget() {
     // Create Shadow DOM host
@@ -446,14 +455,16 @@ const WIDGET_HTML = `
     // Wire up download button
     const downloadBtn = shadowRoot.getElementById("tts-download");
     downloadBtn.addEventListener("click", () => {
-      if (!currentAudioUrl) return;
+      if (audioChunks.length === 0) return;
+      const blob = new Blob(audioChunks, { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = currentAudioUrl;
-      const text = getTextToConvert();
-      a.download = text.length > 5000 ? "speech.wav" : "speech.mp3";
+      a.href = url;
+      a.download = "speech.mp3";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     });
 
     // Save voice preference on change
@@ -592,32 +603,39 @@ const WIDGET_HTML = `
     const text = getTextToConvert();
     if (!text) return;
 
+    if (typeof MediaSource === "undefined") {
+      showError("Your browser does not support audio streaming. Please use a modern browser.");
+      return;
+    }
+
     const generateBtn = shadowRoot.getElementById("tts-generate");
     const voiceSelect = shadowRoot.getElementById("tts-voice");
     const errorEl = shadowRoot.getElementById("tts-error");
     const audioSection = shadowRoot.getElementById("tts-audio-section");
+    const audioEl = shadowRoot.getElementById("tts-audio");
     const progressSection = shadowRoot.getElementById("tts-progress");
 
-    // Reset state
     errorEl.classList.remove("visible");
     audioSection.classList.remove("visible");
     progressSection.classList.remove("visible");
     generateBtn.disabled = true;
-    generateBtn.textContent = "Generating...";
+    generateBtn.textContent = "Streaming...";
 
-    // Clean up previous audio
     if (currentAudioUrl) {
       URL.revokeObjectURL(currentAudioUrl);
       currentAudioUrl = null;
     }
+    audioChunks = [];
 
     const voice = voiceSelect.value;
     const speed = parseFloat(
       shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
     );
 
+    debugLog("Starting streaming TTS", { textLength: text.length, voice, speed });
+
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tts`, {
+      const response = await fetch(`${BACKEND_URL}/api/tts-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice, speed }),
@@ -629,47 +647,130 @@ const WIDGET_HTML = `
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
-          // Response wasn't JSON (e.g., proxy error)
+          // Response wasn't JSON
         }
         throw new Error(errorMessage);
       }
 
-      const contentType = response.headers.get("content-type");
-
-      if (contentType?.includes("application/json")) {
-        // Long audio — start polling
-        const data = await response.json();
-        if (data.isLongAudio) {
-          startPolling(data.operationName, data.outputFileName);
-        }
-      } else {
-        // Short audio — play directly
-        const blob = await response.blob();
-        playAudio(blob);
-      }
+      debugLog("Response received, starting MSE playback");
+      await playStreamingAudio(response, audioEl, audioSection);
     } catch (err) {
+      debugLog("Error:", err);
       showError(err.message || "Failed to generate speech");
     } finally {
-      // Only reset button if we're not polling (polling manages its own button state)
-      if (!pollingInterval) {
-        generateBtn.disabled = false;
-        generateBtn.textContent = "Generate Speech";
-      }
+      generateBtn.disabled = false;
+      generateBtn.textContent = "Generate Speech";
     }
   }
 
-  function playAudio(blob) {
-    const audioSection = shadowRoot.getElementById("tts-audio-section");
-    const audioEl = shadowRoot.getElementById("tts-audio");
+  async function playStreamingAudio(response, audioEl, audioSection) {
+    return new Promise((resolve, reject) => {
+      const mediaSource = new MediaSource();
+      currentAudioUrl = URL.createObjectURL(mediaSource);
+      audioEl.src = currentAudioUrl;
 
-    currentAudioUrl = URL.createObjectURL(blob);
-    audioEl.src = currentAudioUrl;
-    audioEl.playbackRate = parseFloat(
-      shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
-    );
+      const speed = parseFloat(
+        shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
+      );
+      audioEl.playbackRate = speed;
 
-    audioSection.classList.add("visible");
-    audioEl.play();
+      mediaSource.addEventListener("sourceopen", async () => {
+        debugLog("MediaSource opened");
+        let sourceBuffer;
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+        } catch (err) {
+          debugLog("Failed to create SourceBuffer:", err);
+          reject(new Error("Failed to initialize audio player"));
+          return;
+        }
+
+        const reader = response.body.getReader();
+        let firstChunk = true;
+        const queue = [];
+        let appending = false;
+
+        function appendNext() {
+          if (appending || queue.length === 0) return;
+          if (mediaSource.readyState !== "open") return;
+
+          appending = true;
+          const chunk = queue.shift();
+          debugLog(`Appending chunk: ${chunk.byteLength} bytes, queue: ${queue.length}`);
+
+          try {
+            sourceBuffer.appendBuffer(chunk);
+          } catch (err) {
+            debugLog("appendBuffer error:", err);
+            appending = false;
+            reject(err);
+          }
+        }
+
+        sourceBuffer.addEventListener("updateend", () => {
+          appending = false;
+          debugLog("SourceBuffer updateend, buffered:", sourceBuffer.buffered.length > 0
+            ? `${sourceBuffer.buffered.start(0).toFixed(1)}s - ${sourceBuffer.buffered.end(0).toFixed(1)}s`
+            : "empty");
+          appendNext();
+        });
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              debugLog("Stream complete, total chunks:", audioChunks.length);
+              const waitForAppends = () => new Promise((res) => {
+                if (!appending && queue.length === 0) {
+                  res();
+                } else {
+                  sourceBuffer.addEventListener("updateend", function handler() {
+                    if (queue.length === 0) {
+                      sourceBuffer.removeEventListener("updateend", handler);
+                      res();
+                    } else {
+                      appendNext();
+                    }
+                  });
+                  appendNext();
+                }
+              });
+              await waitForAppends();
+
+              if (mediaSource.readyState === "open") {
+                mediaSource.endOfStream();
+                debugLog("MediaSource endOfStream called");
+              }
+              resolve();
+              return;
+            }
+
+            debugLog(`Received chunk: ${value.byteLength} bytes`);
+            audioChunks.push(new Uint8Array(value));
+            queue.push(value);
+
+            if (firstChunk) {
+              firstChunk = false;
+              audioSection.classList.add("visible");
+              appendNext();
+              sourceBuffer.addEventListener("updateend", function playOnce() {
+                sourceBuffer.removeEventListener("updateend", playOnce);
+                debugLog("First chunk appended, starting playback");
+                audioEl.play().catch((err) => debugLog("Play error:", err));
+              }, { once: true });
+            } else {
+              appendNext();
+            }
+          }
+        } catch (err) {
+          debugLog("Stream read error:", err);
+          if (mediaSource.readyState === "open") {
+            mediaSource.endOfStream("network");
+          }
+          reject(err);
+        }
+      });
+    });
   }
 
   function startPolling(operationName, fileName) {
