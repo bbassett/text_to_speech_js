@@ -196,19 +196,6 @@ export default function Home() {
           if (appending || queue.length === 0) return;
           if (mediaSource.readyState !== "open") return;
 
-          // Evict played audio to prevent QuotaExceededError
-          if (sourceBuffer.buffered.length > 0) {
-            const currentTime = audioElement.currentTime;
-            const bufferedStart = sourceBuffer.buffered.start(0);
-            if (currentTime - bufferedStart > 30) {
-              appending = true;
-              const removeEnd = currentTime - 10;
-              debugLog(`Evicting buffer: removing ${bufferedStart.toFixed(1)}s-${removeEnd.toFixed(1)}s`);
-              sourceBuffer.remove(bufferedStart, removeEnd);
-              return; // updateend will call appendNext again
-            }
-          }
-
           appending = true;
           const chunk = queue.shift()!;
           debugLog(`Appending chunk: ${chunk.byteLength} bytes, queue: ${queue.length}`);
@@ -218,12 +205,12 @@ export default function Home() {
             if (err instanceof DOMException && err.name === "QuotaExceededError") {
               queue.unshift(chunk);
               appending = false;
-              debugLog("QuotaExceededError, forcing eviction");
               const ct = audioElement.currentTime;
               if (sourceBuffer.buffered.length > 0 && ct > 1) {
+                debugLog(`QuotaExceededError, evicting buffer 0-${(ct - 1).toFixed(1)}s`);
                 appending = true;
                 sourceBuffer.remove(0, ct - 1);
-                return;
+                return; // updateend will call appendNext to retry
               }
             }
             debugLog("appendBuffer error:", err);
