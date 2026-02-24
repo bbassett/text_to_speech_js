@@ -17,20 +17,13 @@ export default function Home() {
   } | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [autoConvert, setAutoConvert] = useState(false);
-  const [longAudioProgress, setLongAudioProgress] = useState<{
-    isProcessing: boolean;
-    progress: number;
-    operationName?: string;
-    fileName?: string;
-  }>({ isProcessing: false, progress: 0 });
   const audioRef = useRef<HTMLAudioElement>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Uint8Array[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const TTS_DEBUG = true;
+  const TTS_DEBUG = false;
   const debugLog = (...args: unknown[]) => {
     if (TTS_DEBUG) console.log("[tts-web]", ...args);
   };
@@ -56,12 +49,9 @@ export default function Home() {
     }
   }, []);
 
-  // Cleanup polling on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
       if (urlDebounceRef.current) {
         clearTimeout(urlDebounceRef.current);
       }
@@ -121,8 +111,7 @@ export default function Home() {
     if (
       autoConvert &&
       text.trim() &&
-      !isLoading &&
-      !longAudioProgress.isProcessing
+      !isLoading
     ) {
       autoConvertDebounceRef.current = setTimeout(() => {
         handleTextToSpeech();
@@ -173,83 +162,6 @@ export default function Home() {
       );
     } finally {
       setIsExtractingText(false);
-    }
-  };
-
-  const pollLongAudioStatus = async (
-    operationName: string,
-    fileName: string,
-  ) => {
-    try {
-      const response = await fetch("/api/tts-status", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ operationName }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to check operation status");
-      }
-
-      const data = await response.json();
-
-      if (data.status === "completed") {
-        // Stop polling
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-
-        // Download the audio file
-        await downloadLongAudio(fileName);
-
-        setLongAudioProgress({ isProcessing: false, progress: 100 });
-      } else if (data.status === "error") {
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-        setLongAudioProgress({ isProcessing: false, progress: 0 });
-        setError(data.error || "Long audio synthesis failed");
-      } else if (data.status === "processing") {
-        setLongAudioProgress((prev) => ({
-          ...prev,
-          progress: data.progress || prev.progress,
-        }));
-      }
-    } catch (error) {
-      console.error("Error polling status:", error);
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      setLongAudioProgress({ isProcessing: false, progress: 0 });
-      setError("Failed to check audio generation status");
-    }
-  };
-
-  const downloadLongAudio = async (fileName: string) => {
-    try {
-      const response = await fetch("/api/download-audio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fileName }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to download audio");
-      }
-
-      const blob = await response.blob();
-      const audioObjectUrl = URL.createObjectURL(blob);
-      setAudioUrl(audioObjectUrl);
-    } catch (error) {
-      console.error("Error downloading audio:", error);
-      setError("Failed to download generated audio");
     }
   };
 
@@ -387,7 +299,6 @@ export default function Home() {
       URL.revokeObjectURL(audioUrl);
     }
     setAudioUrl(null);
-    setLongAudioProgress({ isProcessing: false, progress: 0 });
     audioChunksRef.current = [];
 
     debugLog("Starting streaming TTS", { textLength: textToConvert.length, voice, playbackSpeed });
@@ -624,50 +535,23 @@ export default function Home() {
             </div>
           )}
 
-          {/* Long Audio Progress */}
-          {longAudioProgress.isProcessing && (
-            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                  Processing long audio...
-                </span>
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  {longAudioProgress.progress}%
-                </span>
-              </div>
-              <div className="w-full bg-blue-200 dark:bg-blue-700 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${longAudioProgress.progress}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                This may take several minutes for long texts. The page will
-                automatically update when ready.
-              </p>
-            </div>
-          )}
-
           <div className="flex items-center space-x-3">
             <button
               onClick={handleTextToSpeech}
               disabled={
                 (!text.trim() && !url.trim()) ||
                 isLoading ||
-                isExtractingText ||
-                longAudioProgress.isProcessing
+                isExtractingText
               }
               className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {longAudioProgress.isProcessing
-                ? "Processing Long Audio..."
-                : isLoading
-                  ? "Generating Speech..."
-                  : isExtractingText
-                    ? "Extracting Text..."
-                    : url.trim() && !text.trim()
-                      ? "Extract & Convert to Speech"
-                      : "Convert to Speech"}
+              {isLoading
+                ? "Generating Speech..."
+                : isExtractingText
+                  ? "Extracting Text..."
+                  : url.trim() && !text.trim()
+                    ? "Extract & Convert to Speech"
+                    : "Convert to Speech"}
             </button>
 
             {/* Auto-convert toggle */}

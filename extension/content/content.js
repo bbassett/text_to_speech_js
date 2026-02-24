@@ -363,13 +363,13 @@ const WIDGET_HTML = `
   let shadowHost = null;
   let shadowRoot = null;
   let isMinimized = false;
-  let pollingInterval = null;
   let currentAudioUrl = null;
   let extractedText = "";
   let articleTitle = "";
   let audioChunks = [];
+  let abortController = null;
 
-  const TTS_DEBUG = true;
+  const TTS_DEBUG = false;
 
   function debugLog(...args) {
     if (TTS_DEBUG) {
@@ -481,10 +481,9 @@ const WIDGET_HTML = `
   }
 
   function destroyWidget() {
-    // Stop polling if active
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      pollingInterval = null;
+    if (abortController) {
+      abortController.abort();
+      abortController = null;
     }
 
     if (currentAudioUrl) {
@@ -632,6 +631,11 @@ const WIDGET_HTML = `
       shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
     );
 
+    if (abortController) {
+      abortController.abort();
+    }
+    abortController = new AbortController();
+
     debugLog("Starting streaming TTS", { textLength: text.length, voice, speed });
 
     try {
@@ -639,6 +643,7 @@ const WIDGET_HTML = `
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice, speed }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -655,6 +660,10 @@ const WIDGET_HTML = `
       debugLog("Response received, starting MSE playback");
       await playStreamingAudio(response, audioEl, audioSection);
     } catch (err) {
+      if (err.name === "AbortError") {
+        debugLog("Request aborted");
+        return;
+      }
       debugLog("Error:", err);
       showError(err.message || "Failed to generate speech");
     } finally {
@@ -689,6 +698,7 @@ const WIDGET_HTML = `
         let firstChunk = true;
         const queue = [];
         let appending = false;
+        let onDrain = null;
 
         function appendNext() {
           if (appending || queue.length === 0) return;
@@ -712,7 +722,12 @@ const WIDGET_HTML = `
           debugLog("SourceBuffer updateend, buffered:", sourceBuffer.buffered.length > 0
             ? `${sourceBuffer.buffered.start(0).toFixed(1)}s - ${sourceBuffer.buffered.end(0).toFixed(1)}s`
             : "empty");
-          appendNext();
+          if (queue.length > 0) {
+            appendNext();
+          } else if (onDrain) {
+            onDrain();
+            onDrain = null;
+          }
         });
 
         try {
@@ -724,15 +739,7 @@ const WIDGET_HTML = `
                 if (!appending && queue.length === 0) {
                   res();
                 } else {
-                  sourceBuffer.addEventListener("updateend", function handler() {
-                    if (queue.length === 0) {
-                      sourceBuffer.removeEventListener("updateend", handler);
-                      res();
-                    } else {
-                      appendNext();
-                    }
-                  });
-                  appendNext();
+                  onDrain = res;
                 }
               });
               await waitForAppends();
@@ -771,91 +778,6 @@ const WIDGET_HTML = `
         }
       });
     });
-  }
-
-  function startPolling(operationName, fileName) {
-    const progressSection = shadowRoot.getElementById("tts-progress");
-    const progressLabel = shadowRoot.getElementById("tts-progress-label");
-    const progressFill = shadowRoot.getElementById("tts-progress-fill");
-    const generateBtn = shadowRoot.getElementById("tts-generate");
-
-    progressSection.classList.add("visible");
-    generateBtn.disabled = true;
-    generateBtn.textContent = "Processing...";
-
-    let pollCount = 0;
-    const maxPolls = 100; // ~5 minutes at 3s intervals
-
-    pollingInterval = setInterval(async () => {
-      pollCount++;
-      if (pollCount > maxPolls) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-        progressSection.classList.remove("visible");
-        generateBtn.disabled = false;
-        generateBtn.textContent = "Generate Speech";
-        showError("Audio generation timed out. Please try again.");
-        return;
-      }
-
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/tts-status`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ operationName }),
-        });
-
-        if (!response.ok) throw new Error("Failed to check status");
-
-        const data = await response.json();
-
-        if (data.status === "completed") {
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-          progressFill.style.width = "100%";
-          progressLabel.textContent = "Processing long audio... 100%";
-          await downloadLongAudio(fileName);
-          progressSection.classList.remove("visible");
-          generateBtn.disabled = false;
-          generateBtn.textContent = "Generate Speech";
-        } else if (data.status === "error") {
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-          progressSection.classList.remove("visible");
-          generateBtn.disabled = false;
-          generateBtn.textContent = "Generate Speech";
-          showError(data.error || "Audio generation failed");
-        } else {
-          const progress = data.progress || 0;
-          progressFill.style.width = `${progress}%`;
-          progressLabel.textContent = `Processing long audio... ${progress}%`;
-        }
-      } catch (err) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-        progressSection.classList.remove("visible");
-        generateBtn.disabled = false;
-        generateBtn.textContent = "Generate Speech";
-        showError("Lost connection while checking audio status");
-      }
-    }, 3000);
-  }
-
-  async function downloadLongAudio(fileName) {
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/download-audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName }),
-      });
-
-      if (!response.ok) throw new Error("Failed to download audio");
-
-      const blob = await response.blob();
-      playAudio(blob);
-    } catch (err) {
-      showError("Failed to download generated audio");
-    }
   }
 
   function showError(message) {
