@@ -600,53 +600,57 @@ export default function Home() {
               />
 
               {/* Playback Controls */}
-              <div className="mt-3 flex justify-start space-x-2">
-                <button
-                  onClick={() => setPlaybackSpeed(1)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    playbackSpeed === 1
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  }`}
+              <div className="mt-3 flex justify-between">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setPlaybackSpeed(1)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      playbackSpeed === 1
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    1x
+                  </button>
+                  <button
+                    onClick={() => setPlaybackSpeed(1.5)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      playbackSpeed === 1.5
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    1.5x
+                  </button>
+                  <button
+                    onClick={() => setPlaybackSpeed(2)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      playbackSpeed === 2
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    2x
+                  </button>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => {
+                      if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 15);
+                    }}
+                    className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                  >
+                    -15s
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || Infinity, audioRef.current.currentTime + 15);
+                    }}
+                    className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
                 >
-                  1x
-                </button>
-                <button
-                  onClick={() => setPlaybackSpeed(1.5)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    playbackSpeed === 1.5
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  }`}
-                >
-                  1.5x
-                </button>
-                <button
-                  onClick={() => setPlaybackSpeed(2)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    playbackSpeed === 2
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                  }`}
-                >
-                  2x
-                </button>
-                <button
-                  onClick={() => {
-                    if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 15);
-                  }}
-                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                >
-                  -15s
-                </button>
-                <button
-                  onClick={() => {
-                    if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || Infinity, audioRef.current.currentTime + 15);
-                  }}
-                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-                >
-                  +15s
-                </button>
+                    +15s
+                  </button>
+                </div>
               </div>
 
               <button
