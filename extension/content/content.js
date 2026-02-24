@@ -414,6 +414,8 @@ const WIDGET_HTML = `
       btn.addEventListener("click", () => {
         speedBtns.forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
+        const speed = parseFloat(btn.dataset.speed);
+        chrome.storage.sync.set({ playbackSpeed: speed });
       });
     });
 
@@ -428,7 +430,26 @@ const WIDGET_HTML = `
       handleGenerate();
     });
 
-    // Load saved preferences (placeholder for Task 6)
+    // Wire up download button
+    const downloadBtn = shadowRoot.getElementById("tts-download");
+    downloadBtn.addEventListener("click", () => {
+      if (!currentAudioUrl) return;
+      const a = document.createElement("a");
+      a.href = currentAudioUrl;
+      const text = getTextToConvert();
+      a.download = text.length > 5000 ? "speech.wav" : "speech.mp3";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+
+    // Save voice preference on change
+    const voiceSelect = shadowRoot.getElementById("tts-voice");
+    voiceSelect.addEventListener("change", () => {
+      chrome.storage.sync.set({ voice: voiceSelect.value });
+    });
+
+    // Load saved preferences
     loadPreferences();
 
     // Extract text from page
@@ -723,7 +744,23 @@ const WIDGET_HTML = `
   }
 
   function loadPreferences() {
-    // Placeholder — implemented in Task 6
+    chrome.storage.sync.get(["voice", "playbackSpeed"], (result) => {
+      if (result.voice) {
+        const voiceSelect = shadowRoot.getElementById("tts-voice");
+        voiceSelect.value = result.voice;
+      }
+
+      if (result.playbackSpeed) {
+        const speed = result.playbackSpeed;
+        const speedBtns = shadowRoot.querySelectorAll(".tts-speed-btn");
+        speedBtns.forEach((btn) => {
+          btn.classList.toggle(
+            "active",
+            parseFloat(btn.dataset.speed) === speed
+          );
+        });
+      }
+    });
   }
 
   // Listen for messages from service worker
