@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 google-credentials.json
+
+# Extension build artifacts
+extension.zip
