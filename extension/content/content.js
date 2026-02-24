@@ -642,7 +642,7 @@ const WIDGET_HTML = `
       const response = await fetch(`${BACKEND_URL}/api/tts-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice, speed }),
+        body: JSON.stringify({ text, voice }),
         signal: abortController.signal,
       });
 
