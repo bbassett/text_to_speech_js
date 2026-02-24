@@ -1,4 +1,5 @@
-const BACKEND_URL = "https://tts.brandonbassett.xyz";
+//const BACKEND_URL = "https://tts.brandonbassett.xyz";
+const BACKEND_URL = "http://localhost:3000";
 
 const WIDGET_CSS = `
   :host {
@@ -120,9 +121,37 @@ const WIDGET_CSS = `
     font-family: inherit;
   }
 
+  .tts-playback-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
   .tts-speed-group {
     display: flex;
     gap: 2px;
+  }
+
+  .tts-skip-group {
+    display: flex;
+    gap: 6px;
+  }
+
+  .tts-skip-btn {
+    background: #374151;
+    border: 1px solid #4b5563;
+    color: #d1d5db;
+    padding: 4px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tts-skip-btn:hover {
+    background: #4b5563;
   }
 
   .tts-speed-btn {
@@ -330,11 +359,6 @@ const WIDGET_HTML = `
           <option value="en-GB-Wavenet-D">UK Wavenet-D (Male)</option>
         </optgroup>
       </select>
-      <div class="tts-speed-group">
-        <button class="tts-speed-btn active" data-speed="1">1x</button>
-        <button class="tts-speed-btn" data-speed="1.5">1.5x</button>
-        <button class="tts-speed-btn" data-speed="2">2x</button>
-      </div>
     </div>
 
     <button class="tts-generate-btn" id="tts-generate">Generate Speech</button>
@@ -348,6 +372,29 @@ const WIDGET_HTML = `
 
     <div class="tts-audio-section" id="tts-audio-section">
       <audio class="tts-audio-player" id="tts-audio" controls></audio>
+      <div class="tts-playback-controls">
+        <div class="tts-speed-group">
+          <button class="tts-speed-btn active" data-speed="1">1x</button>
+          <button class="tts-speed-btn" data-speed="1.5">1.5x</button>
+          <button class="tts-speed-btn" data-speed="2">2x</button>
+        </div>
+        <div class="tts-skip-group">
+          <button class="tts-skip-btn" id="tts-skip-back" title="Back 15 seconds">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 4v6h6" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              <text x="12" y="15.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="8" font-weight="bold">15</text>
+            </svg>
+          </button>
+          <button class="tts-skip-btn" id="tts-skip-forward" title="Forward 15 seconds">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6" />
+              <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
+              <text x="12" y="15.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="8" font-weight="bold">15</text>
+            </svg>
+          </button>
+        </div>
+      </div>
       <button class="tts-download-btn" id="tts-download">Download Audio</button>
     </div>
 
@@ -450,6 +497,19 @@ const WIDGET_HTML = `
     retryBtn.addEventListener("click", () => {
       shadowRoot.getElementById("tts-error").classList.remove("visible");
       handleGenerate();
+    });
+
+    // Wire up skip buttons
+    const skipBackBtn = shadowRoot.getElementById("tts-skip-back");
+    skipBackBtn.addEventListener("click", () => {
+      const audio = shadowRoot.getElementById("tts-audio");
+      if (audio) audio.currentTime = Math.max(0, audio.currentTime - 15);
+    });
+
+    const skipForwardBtn = shadowRoot.getElementById("tts-skip-forward");
+    skipForwardBtn.addEventListener("click", () => {
+      const audio = shadowRoot.getElementById("tts-audio");
+      if (audio) audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + 15);
     });
 
     // Wire up download button
