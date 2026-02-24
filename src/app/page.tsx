@@ -27,6 +27,12 @@ export default function Home() {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const audioChunksRef = useRef<Uint8Array[]>([]);
+
+  const TTS_DEBUG = true;
+  const debugLog = (...args: unknown[]) => {
+    if (TTS_DEBUG) console.log("[tts-web]", ...args);
+  };
 
   // Load playback speed and auto-convert from cookies on mount
   useEffect(() => {
@@ -243,66 +249,164 @@ export default function Home() {
     }
   };
 
+  const playStreamingAudio = async (
+    response: Response,
+    audioElement: HTMLAudioElement
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const mediaSource = new MediaSource();
+      const msUrl = URL.createObjectURL(mediaSource);
+      audioElement.src = msUrl;
+      audioElement.playbackRate = playbackSpeed;
+
+      mediaSource.addEventListener("sourceopen", async () => {
+        debugLog("MediaSource opened");
+        let sourceBuffer: SourceBuffer;
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+        } catch (err) {
+          debugLog("Failed to create SourceBuffer:", err);
+          reject(new Error("Failed to initialize audio player"));
+          return;
+        }
+
+        const reader = response.body!.getReader();
+        let firstChunk = true;
+        const queue: Uint8Array[] = [];
+        let appending = false;
+
+        function appendNext() {
+          if (appending || queue.length === 0) return;
+          if (mediaSource.readyState !== "open") return;
+          appending = true;
+          const chunk = queue.shift()!;
+          debugLog(`Appending chunk: ${chunk.byteLength} bytes, queue: ${queue.length}`);
+          try {
+            sourceBuffer.appendBuffer(chunk);
+          } catch (err) {
+            debugLog("appendBuffer error:", err);
+            appending = false;
+            reject(err);
+          }
+        }
+
+        sourceBuffer.addEventListener("updateend", () => {
+          appending = false;
+          debugLog("SourceBuffer updateend");
+          appendNext();
+        });
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              debugLog("Stream complete, total chunks:", audioChunksRef.current.length);
+              const waitForAppends = () =>
+                new Promise<void>((res) => {
+                  if (!appending && queue.length === 0) {
+                    res();
+                  } else {
+                    sourceBuffer.addEventListener("updateend", function handler() {
+                      if (queue.length === 0) {
+                        sourceBuffer.removeEventListener("updateend", handler);
+                        res();
+                      } else {
+                        appendNext();
+                      }
+                    });
+                    appendNext();
+                  }
+                });
+              await waitForAppends();
+              if (mediaSource.readyState === "open") {
+                mediaSource.endOfStream();
+                debugLog("MediaSource endOfStream called");
+              }
+              resolve(msUrl);
+              return;
+            }
+
+            debugLog(`Received chunk: ${value.byteLength} bytes`);
+            audioChunksRef.current.push(new Uint8Array(value));
+            queue.push(value);
+
+            if (firstChunk) {
+              firstChunk = false;
+              appendNext();
+              sourceBuffer.addEventListener(
+                "updateend",
+                function playOnce() {
+                  sourceBuffer.removeEventListener("updateend", playOnce);
+                  debugLog("First chunk appended, starting playback");
+                  audioElement.play().catch((err) => debugLog("Play error:", err));
+                },
+                { once: true }
+              );
+            } else {
+              appendNext();
+            }
+          }
+        } catch (err) {
+          debugLog("Stream read error:", err);
+          if (mediaSource.readyState === "open") {
+            mediaSource.endOfStream("network");
+          }
+          reject(err);
+        }
+      });
+    });
+  };
+
   const handleTextToSpeech = async () => {
     const textToConvert = text;
 
-    // If URL is provided but text is empty, extract text first
     if (url.trim() && !text.trim()) {
       await handleExtractFromUrl();
-      return; // Let the user review the extracted text before converting
+      return;
     }
 
     if (!textToConvert.trim()) return;
 
+    // Check MSE support
+    if (typeof MediaSource === "undefined") {
+      setError("Your browser does not support audio streaming. Please use a modern browser.");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
-    setAudioUrl(null); // Clear previous audio
+    setAudioUrl(null);
     setLongAudioProgress({ isProcessing: false, progress: 0 });
+    audioChunksRef.current = [];
+
+    debugLog("Starting streaming TTS", { textLength: textToConvert.length, voice, playbackSpeed });
 
     try {
-      const response = await fetch("/api/tts", {
+      const response = await fetch("/api/tts-stream", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: textToConvert, voice }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: textToConvert, voice, speed: playbackSpeed }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to generate speech");
-      }
-
-      const contentType = response.headers.get("content-type");
-
-      if (contentType?.includes("application/json")) {
-        // Long audio response with operation details
-        const data = await response.json();
-
-        if (data.isLongAudio) {
-          setLongAudioProgress({
-            isProcessing: true,
-            progress: 0,
-            operationName: data.operationName,
-            fileName: data.outputFileName,
-          });
-
-          // Start polling for completion
-          pollingIntervalRef.current = setInterval(() => {
-            pollLongAudioStatus(data.operationName, data.outputFileName);
-          }, 3000); // Poll every 3 seconds
+        let errorMessage = "Failed to generate speech";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Response wasn't JSON
         }
-      } else {
-        // Short audio response with direct audio content
-        const blob = await response.blob();
-        const audioObjectUrl = URL.createObjectURL(blob);
-        setAudioUrl(audioObjectUrl);
+        throw new Error(errorMessage);
       }
+
+      debugLog("Response received, starting MSE playback");
+
+      if (!audioRef.current) throw new Error("Audio element not available");
+      const msUrl = await playStreamingAudio(response, audioRef.current);
+      setAudioUrl(msUrl);
     } catch (error) {
       console.error("Error generating speech:", error);
-      setError(
-        error instanceof Error ? error.message : "Failed to generate speech",
-      );
+      setError(error instanceof Error ? error.message : "Failed to generate speech");
     } finally {
       setIsLoading(false);
     }
@@ -317,15 +421,16 @@ export default function Home() {
   };
 
   const downloadAudio = () => {
-    if (audioUrl) {
+    if (audioChunksRef.current.length > 0) {
+      const blob = new Blob(audioChunksRef.current, { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = audioUrl;
-      // Use appropriate file extension based on the audio type
-      const fileName = text.length > 5000 ? "speech.wav" : "speech.mp3";
-      a.download = fileName;
+      a.href = url;
+      a.download = "speech.mp3";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     }
   };
 
@@ -574,7 +679,6 @@ export default function Home() {
                 ref={audioRef}
                 controls
                 className="w-full"
-                src={audioUrl}
               />
 
               {/* Playback Speed Controls */}
