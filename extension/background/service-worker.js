@@ -1,13 +1,33 @@
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
+  if (!tab.id || !tab.url) return;
 
-  // Try to send a message to existing content script first
+  // Check for restricted pages where content scripts can't run
+  const restrictedPatterns = [
+    /^chrome:\/\//,
+    /^chrome-extension:\/\//,
+    /^about:/,
+    /^edge:\/\//,
+    /^https:\/\/chrome\.google\.com\/webstore/,
+    /^https:\/\/chromewebstore\.google\.com/,
+  ];
+
+  const isRestricted = restrictedPatterns.some((pattern) => pattern.test(tab.url));
+  if (isRestricted) {
+    // Set badge to indicate can't run here
+    chrome.action.setBadgeText({ text: "!", tabId: tab.id });
+    chrome.action.setBadgeBackgroundColor({ color: "#ef4444", tabId: tab.id });
+    return;
+  }
+
+  // Clear any previous badge
+  chrome.action.setBadgeText({ text: "", tabId: tab.id });
+
+  // Try to send toggle to existing content script
   try {
-    const response = await chrome.tabs.sendMessage(tab.id, { action: "toggle" });
-    // Content script already exists, it handled the toggle
+    await chrome.tabs.sendMessage(tab.id, { action: "toggle" });
     return;
   } catch {
-    // Content script not injected yet, inject it
+    // Content script not injected yet
   }
 
   try {
@@ -17,5 +37,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
   } catch (err) {
     console.error("Cannot inject into this page:", err);
+    chrome.action.setBadgeText({ text: "!", tabId: tab.id });
+    chrome.action.setBadgeBackgroundColor({ color: "#ef4444", tabId: tab.id });
   }
 });
