@@ -599,8 +599,8 @@ export default function Home() {
                 className="w-full"
               />
 
-              {/* Playback Speed Controls */}
-              <div className="mt-3 flex justify-center space-x-2">
+              {/* Playback Controls */}
+              <div className="mt-3 flex justify-start space-x-2">
                 <button
                   onClick={() => setPlaybackSpeed(1)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -630,6 +630,22 @@ export default function Home() {
                   }`}
                 >
                   2x
+                </button>
+                <button
+                  onClick={() => {
+                    if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 15);
+                  }}
+                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  -15s
+                </button>
+                <button
+                  onClick={() => {
+                    if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || Infinity, audioRef.current.currentTime + 15);
+                  }}
+                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  +15s
                 </button>
               </div>
 
