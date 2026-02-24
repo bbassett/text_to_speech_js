@@ -17,6 +17,7 @@ export default function Home() {
   } | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [autoConvert, setAutoConvert] = useState(false);
+  const [showAudio, setShowAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const urlDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -335,6 +336,7 @@ export default function Home() {
       }
 
       debugLog("Response received, starting MSE playback");
+      setShowAudio(true);
 
       if (!audioRef.current) throw new Error("Audio element not available");
       const msUrl = await playStreamingAudio(response, audioRef.current);
@@ -346,6 +348,7 @@ export default function Home() {
       }
       console.error("Error generating speech:", error);
       setError(error instanceof Error ? error.message : "Failed to generate speech");
+      setShowAudio(false);
     } finally {
       setIsLoading(false);
     }
@@ -359,6 +362,7 @@ export default function Home() {
       URL.revokeObjectURL(audioUrl);
     }
     setAudioUrl(null);
+    setShowAudio(false);
     setError(null);
   };
 
@@ -588,7 +592,7 @@ export default function Home() {
             </label>
           </div>
 
-          <div className={`mt-6 ${audioUrl ? "" : "hidden"}`}>
+          <div className={`mt-6 ${showAudio ? "" : "hidden"}`}>
               <audio
                 ref={audioRef}
                 controls
