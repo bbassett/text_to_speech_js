@@ -34,3 +34,12 @@ Open [http://localhost:3000](http://localhost:3000) to start TTS'ing.
 ```bash
 docker compose up
 ```
+
+### Roadmap
+
+- signup and login
+- payments
+- usage stats
+- publish to RSS
+- data history
+- data delete
