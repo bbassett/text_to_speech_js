@@ -712,7 +712,7 @@ const WIDGET_HTML = `
         throw new Error(errorMessage);
       }
 
-      debugLog("Response received, starting MSE playback");
+      debugLog("Response received, starting audio download");
       await playStreamingAudio(response, audioEl, audioSection);
     } catch (err) {
       if (err.name === "AbortError") {
