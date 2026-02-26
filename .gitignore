@@ -40,8 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 google-credentials.json
-docs
+docs/plans.bak
 
 # Extension build artifacts
 extension.zip
 firefox-extension.zip
+/dist/
