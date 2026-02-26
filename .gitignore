@@ -43,6 +43,4 @@ google-credentials.json
 docs/plans.bak
 
 # Extension build artifacts
-extension.zip
-firefox-extension.zip
 /dist/
