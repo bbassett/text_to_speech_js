@@ -1,5 +1,4 @@
-const BACKEND_URL = "https://tts.brandonbassett.xyz";
-//const BACKEND_URL = "http://localhost:3000";
+const BACKEND_URL = "https://tts.brandonbassett.com";
 
 const WIDGET_CSS = `
   :host {

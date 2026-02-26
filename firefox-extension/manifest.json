@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Extract text from any web page and convert it to speech using Google Cloud TTS.",
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["https://tts.brandonbassett.xyz/*", "http://localhost:3000/*"],
+  "host_permissions": [
+    "https://tts.brandonbassett.com/*",
+    "http://localhost:3000/*"
+  ],
   "background": {
     "scripts": ["background/service-worker.js"]
   },
@@ -13,7 +16,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "tts@brandonbassett.xyz",
+      "id": "tts@brandonbassett.com",
       "strict_min_version": "109.0"
     }
   }
