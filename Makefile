@@ -1,3 +1,5 @@
+.PHONY: transfer rebuild chrome firefox extension chrome-zip firefox-zip clean-extensions
+
 transfer:
 	rsync -av \
 	--exclude=.next \
@@ -41,10 +43,12 @@ dist/firefox: $(shell find $(EXT_SRC) -type f)
 	@echo "Built dist/firefox/"
 
 chrome-zip: chrome
+	@rm -f dist/chrome.zip
 	@cd dist && zip -r chrome.zip chrome/
 	@echo "Created dist/chrome.zip"
 
 firefox-zip: firefox
+	@rm -f dist/firefox.zip
 	@cd dist && zip -r firefox.zip firefox/
 	@echo "Created dist/firefox.zip"
 
