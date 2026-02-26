@@ -661,10 +661,8 @@ const WIDGET_HTML = `
     const text = getTextToConvert();
     if (!text) return;
 
-    if (typeof MediaSource === "undefined") {
-      showError("Your browser does not support audio streaming. Please use a modern browser.");
-      return;
-    }
+    const useMSE = typeof MediaSource !== "undefined" &&
+      MediaSource.isTypeSupported("audio/mpeg");
 
     const generateBtn = shadowRoot.getElementById("tts-generate");
     const voiceSelect = shadowRoot.getElementById("tts-voice");
@@ -677,7 +675,7 @@ const WIDGET_HTML = `
     audioSection.classList.remove("visible");
     progressSection.classList.remove("visible");
     generateBtn.disabled = true;
-    generateBtn.textContent = "Streaming...";
+    generateBtn.textContent = useMSE ? "Streaming..." : "Loading...";
 
     if (currentAudioUrl) {
       URL.revokeObjectURL(currentAudioUrl);
@@ -716,8 +714,13 @@ const WIDGET_HTML = `
         throw new Error(errorMessage);
       }
 
-      debugLog("Response received, starting MSE playback");
-      await playStreamingAudio(response, audioEl, audioSection);
+      if (useMSE) {
+        debugLog("Response received, starting MSE playback");
+        await playMSEAudio(response, audioEl, audioSection);
+      } else {
+        debugLog("Response received, loading via blob");
+        await playBlobAudio(response, audioEl, audioSection);
+      }
     } catch (err) {
       if (err.name === "AbortError") {
         debugLog("Request aborted");
@@ -731,7 +734,7 @@ const WIDGET_HTML = `
     }
   }
 
-  async function playStreamingAudio(response, audioEl, audioSection) {
+  async function playMSEAudio(response, audioEl, audioSection) {
     return new Promise((resolve, reject) => {
       const mediaSource = new MediaSource();
       currentAudioUrl = URL.createObjectURL(mediaSource);
@@ -848,6 +851,47 @@ const WIDGET_HTML = `
         }
       });
     });
+  }
+
+  async function playBlobAudio(response, audioEl, audioSection) {
+    const reader = response.body.getReader();
+    let firstChunk = true;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          debugLog("Stream complete, total chunks:", audioChunks.length);
+          break;
+        }
+
+        debugLog(`Received chunk: ${value.byteLength} bytes`);
+        audioChunks.push(new Uint8Array(value));
+
+        if (firstChunk) {
+          firstChunk = false;
+          audioSection.classList.add("visible");
+        }
+      }
+
+      const blob = new Blob(audioChunks, { type: "audio/mpeg" });
+      if (currentAudioUrl) {
+        URL.revokeObjectURL(currentAudioUrl);
+      }
+      currentAudioUrl = URL.createObjectURL(blob);
+      audioEl.src = currentAudioUrl;
+
+      const speed = parseFloat(
+        shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
+      );
+      audioEl.playbackRate = speed;
+
+      debugLog("Blob URL set, starting playback");
+      await audioEl.play().catch((err) => debugLog("Play error:", err));
+    } catch (err) {
+      debugLog("Stream read error:", err);
+      throw err;
+    }
   }
 
   function showError(message) {

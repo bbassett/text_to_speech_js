@@ -1,7 +1,6 @@
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id || !tab.url) return;
 
-  // Detect browser for restricted URL patterns
   const isFirefox = typeof browser !== "undefined";
 
   const restrictedPatterns = isFirefox
