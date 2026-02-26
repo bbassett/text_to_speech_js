@@ -166,7 +166,10 @@ export default function Home() {
     }
   };
 
-  const playStreamingAudio = async (
+  const supportsMseMpeg = () =>
+    typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
+
+  const playStreamingAudioMSE = async (
     response: Response,
     audioElement: HTMLAudioElement
   ): Promise<string> => {
@@ -211,7 +214,7 @@ export default function Home() {
                 debugLog(`QuotaExceededError, evicting buffer 0-${(ct - 1).toFixed(1)}s`);
                 appending = true;
                 sourceBuffer.remove(0, ct - 1);
-                return; // updateend will call appendNext to retry
+                return;
               }
             }
             debugLog("appendBuffer error:", err);
@@ -284,6 +287,55 @@ export default function Home() {
     });
   };
 
+  const playStreamingAudioBlob = async (
+    response: Response,
+    audioElement: HTMLAudioElement
+  ): Promise<string> => {
+    const reader = response.body!.getReader();
+    let firstChunk = true;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          debugLog("Stream complete, total chunks:", audioChunksRef.current.length);
+          break;
+        }
+
+        debugLog(`Received chunk: ${value.byteLength} bytes`);
+        audioChunksRef.current.push(new Uint8Array(value));
+
+        if (firstChunk) {
+          firstChunk = false;
+        }
+      }
+
+      const blob = new Blob(audioChunksRef.current, { type: "audio/mpeg" });
+      const blobUrl = URL.createObjectURL(blob);
+      audioElement.src = blobUrl;
+      audioElement.playbackRate = playbackSpeed;
+
+      debugLog("Blob URL set, starting playback");
+      await audioElement.play().catch((err) => debugLog("Play error:", err));
+      return blobUrl;
+    } catch (err) {
+      debugLog("Stream read error:", err);
+      throw err;
+    }
+  };
+
+  const playStreamingAudio = async (
+    response: Response,
+    audioElement: HTMLAudioElement
+  ): Promise<string> => {
+    if (supportsMseMpeg()) {
+      debugLog("Using MSE streaming playback");
+      return playStreamingAudioMSE(response, audioElement);
+    }
+    debugLog("MSE audio/mpeg not supported, using Blob fallback");
+    return playStreamingAudioBlob(response, audioElement);
+  };
+
   const handleTextToSpeech = async () => {
     const textToConvert = text;
 
@@ -293,12 +345,6 @@ export default function Home() {
     }
 
     if (!textToConvert.trim()) return;
-
-    // Check MSE support
-    if (typeof MediaSource === "undefined") {
-      setError("Your browser does not support audio streaming. Please use a modern browser.");
-      return;
-    }
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -335,7 +381,7 @@ export default function Home() {
         throw new Error(errorMessage);
       }
 
-      debugLog("Response received, starting MSE playback");
+      debugLog("Response received, starting audio playback");
       setShowAudio(true);
 
       if (!audioRef.current) throw new Error("Audio element not available");
