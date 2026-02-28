@@ -1,4 +1,5 @@
-.PHONY: transfer rebuild chrome firefox extension chrome-zip firefox-zip clean-extensions
+include .env
+.PHONY: transfer rebuild chrome firefox extension chrome-zip firefox-zip publish-firefox chrome-test test test-web test-extension test-firefox-lint clean-extensions
 
 transfer:
 	rsync -av \
@@ -48,10 +49,36 @@ chrome-zip: chrome
 	@echo "Created dist/chrome.zip"
 
 firefox-zip: firefox
-	@rm -f dist/firefox.zip
-	@cd dist && zip -r firefox.zip firefox/
-	@echo "Created dist/firefox.zip"
+	@rm -f dist/tts-firefox.zip
+	@cd dist/firefox && zip -r ../tts-firefox.zip .
+	@echo "Created dist/tts-firefox.zip"
+
+publish-firefox: firefox
+	npx web-ext sign \
+		--source-dir dist/firefox/ \
+		--channel=listed \
+		--amo-metadata=src/extension/amo-metadata.json \
+		--api-key=$(MOZILLA_JWT_ISSUER) \
+		--api-secret=$(MOZILLA_JWT_SECRET) \
+		--ignore-files="lib/readability.js"
+
+test: test-web test-extension test-firefox-lint
+
+test-web:
+	npx playwright test --project=web-chromium --project=web-firefox
+
+test-extension: chrome-test
+	npx playwright test --project=chrome-extension --workers=1
+
+test-firefox-lint: firefox
+	npx web-ext lint --source-dir dist/firefox/ --warnings-as-errors=false
+
+chrome-test: chrome
+	@rm -rf dist/chrome-test
+	@cp -r dist/chrome dist/chrome-test
+	@sed -i '' 's/mode: "closed"/mode: "open"/' dist/chrome-test/content/content.js
+	@echo "Built dist/chrome-test/ (open shadow DOM)"
 
 clean-extensions:
-	@rm -rf dist/chrome dist/firefox dist/chrome.zip dist/firefox.zip
+	@rm -rf dist/chrome dist/chrome-test dist/firefox dist/chrome.zip dist/tts-firefox.zip
 	@echo "Cleaned extension build artifacts"

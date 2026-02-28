@@ -411,7 +411,6 @@ const WIDGET_HTML = `
   let isMinimized = false;
   let currentAudioUrl = null;
   let extractedText = "";
-  let articleTitle = "";
   let audioChunks = [];
   let abortController = null;
 
@@ -437,8 +436,12 @@ const WIDGET_HTML = `
     shadowRoot.appendChild(style);
 
     // Inject HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(WIDGET_HTML, "text/html");
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = WIDGET_HTML;
+    for (const node of [...doc.body.childNodes]) {
+      wrapper.appendChild(document.adoptNode(node));
+    }
     shadowRoot.appendChild(wrapper);
 
     // Wire up minimize
@@ -566,7 +569,6 @@ const WIDGET_HTML = `
 
     isMinimized = false;
     extractedText = "";
-    articleTitle = "";
     window.__ttsExtensionInjected = false;
   }
 
@@ -589,7 +591,6 @@ const WIDGET_HTML = `
   function extractText() {
     const preview = shadowRoot.getElementById("tts-text-preview");
     const pasteArea = shadowRoot.getElementById("tts-paste-area");
-    const pasteToggle = shadowRoot.getElementById("tts-paste-toggle");
     const generateBtn = shadowRoot.getElementById("tts-generate");
 
     try {
@@ -598,17 +599,22 @@ const WIDGET_HTML = `
 
       if (article && article.textContent && article.textContent.trim().length > 0) {
         // Successful extraction
-        const titleHtml = article.title
-          ? `<div class="tts-article-title">${escapeHtml(article.title)}</div>`
-          : "";
+        preview.textContent = "";
+        if (article.title) {
+          const titleDiv = document.createElement("div");
+          titleDiv.className = "tts-article-title";
+          titleDiv.textContent = article.title;
+          preview.appendChild(titleDiv);
+        }
         const previewText = article.textContent.trim().substring(0, 300);
-        preview.innerHTML = titleHtml + escapeHtml(previewText) + (article.textContent.length > 300 ? "..." : "");
+        preview.appendChild(document.createTextNode(
+          previewText + (article.textContent.length > 300 ? "..." : "")
+        ));
         preview.style.display = "block";
         pasteArea.style.display = "none";
 
         // Store full text for TTS
         extractedText = article.textContent.trim();
-        articleTitle = article.title || "";
 
         // Auto-generate
         generateBtn.textContent = "Generate Speech";
@@ -640,12 +646,6 @@ const WIDGET_HTML = `
       extractionMsg.textContent = message;
       pasteArea.parentNode.insertBefore(extractionMsg, pasteArea);
     }
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   function getTextToConvert() {

@@ -1,0 +1,11 @@
+{
+  "summary": {
+    "en-US": "Extract text from any web page and convert it to speech using Google Cloud TTS."
+  },
+  "categories": [
+    "other"
+  ],
+  "version": {
+    "license": "all-rights-reserved"
+  }
+}

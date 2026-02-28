@@ -44,3 +44,4 @@ docs/plans.bak
 
 # Extension build artifacts
 /dist/
+public/google*
