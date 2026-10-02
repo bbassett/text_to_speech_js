@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
     // Delete the file after successful download (auto-cleanup)
     try {
       await file.delete();
-      console.log(`Successfully deleted file: ${fileName}`);
     } catch (deleteError) {
       console.error(`Failed to delete file ${fileName}:`, deleteError);
       // Don't fail the request if deletion fails

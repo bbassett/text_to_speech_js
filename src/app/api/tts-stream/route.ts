@@ -1,12 +1,6 @@
 import { NextRequest } from "next/server";
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 
-function debugLog(...args: unknown[]) {
-  if (process.env.DEBUG_TTS) {
-    console.log("[tts-stream]", ...args);
-  }
-}
-
 function splitIntoSentences(text: string): string[] {
   const abbreviations = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|approx|dept|est|inc|ltd|vol|rev)\./gi;
 
@@ -29,7 +23,6 @@ function splitIntoSentences(text: string): string[] {
     })
     .filter((s) => s.length > 0);
 
-  debugLog(`Split text into ${sentences.length} sentences`);
   return sentences;
 }
 
@@ -41,8 +34,6 @@ async function synthesizeSentence(
   speed: number,
   index: number
 ): Promise<Uint8Array> {
-  debugLog(`Synthesizing sentence ${index}: "${text.substring(0, 50)}..." (${text.length} chars)`);
-  const startTime = Date.now();
 
   const [response] = await client.synthesizeSpeech({
     input: { text },
@@ -55,7 +46,6 @@ async function synthesizeSentence(
   }
 
   const audioBytes = response.audioContent as Uint8Array;
-  debugLog(`Sentence ${index} synthesized: ${audioBytes.length} bytes in ${Date.now() - startTime}ms`);
   return audioBytes;
 }
 
@@ -69,8 +59,6 @@ export async function POST(request: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
-
-    debugLog(`Received request: ${text.length} chars, voice=${voice}, speed=${speed}`);
 
     const client = new TextToSpeechClient({
       keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
@@ -86,8 +74,6 @@ export async function POST(request: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     }
-
-    debugLog(`Starting pipelined synthesis of ${sentences.length} sentences`);
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -111,7 +97,6 @@ export async function POST(request: NextRequest) {
             const audioBytes = await pending.get(nextToWrite)!;
             pending.delete(nextToWrite);
 
-            debugLog(`Writing sentence ${nextToWrite}: ${audioBytes.length} bytes`);
             controller.enqueue(audioBytes);
             nextToWrite++;
 
@@ -124,13 +109,12 @@ export async function POST(request: NextRequest) {
               nextToSynthesize++;
             }
           } catch (err) {
-            debugLog(`Error at sentence ${nextToWrite}:`, err);
+            console.error(`TTS stream error at sentence ${nextToWrite}:`, err);
             controller.error(err);
             return;
           }
         }
 
-        debugLog("Stream complete, all sentences written");
         controller.close();
       },
     });
@@ -143,7 +127,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    debugLog("Error:", error);
+    console.error("TTS stream error:", error);
     return new Response(
       JSON.stringify({ error: "Failed to start streaming synthesis" }),
       { status: 500, headers: { "Content-Type": "application/json" } }

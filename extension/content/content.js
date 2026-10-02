@@ -416,14 +416,6 @@ const WIDGET_HTML = `
   let audioChunks = [];
   let abortController = null;
 
-  const TTS_DEBUG = false;
-
-  function debugLog(...args) {
-    if (TTS_DEBUG) {
-      console.log("[tts-ext]", ...args);
-    }
-  }
-
   function createWidget() {
     // Create Shadow DOM host
     shadowHost = document.createElement("div");
@@ -696,8 +688,6 @@ const WIDGET_HTML = `
     }
     abortController = new AbortController();
 
-    debugLog("Starting streaming TTS", { textLength: text.length, voice, speed });
-
     try {
       const response = await fetch(`${BACKEND_URL}/api/tts-stream`, {
         method: "POST",
@@ -717,19 +707,41 @@ const WIDGET_HTML = `
         throw new Error(errorMessage);
       }
 
-      debugLog("Response received, starting MSE playback");
-      await playStreamingAudio(response, audioEl, audioSection);
+      const mseSupported = MediaSource.isTypeSupported("audio/mpeg");
+      if (mseSupported) {
+        await playStreamingAudio(response, audioEl, audioSection);
+      } else {
+        await playBlobAudio(response, audioEl, audioSection);
+      }
     } catch (err) {
       if (err.name === "AbortError") {
-        debugLog("Request aborted");
         return;
       }
-      debugLog("Error:", err);
       showError(err.message || "Failed to generate speech");
     } finally {
       generateBtn.disabled = false;
       generateBtn.textContent = "Generate Speech";
     }
+  }
+
+  async function playBlobAudio(response, audioEl, audioSection) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      audioChunks.push(new Uint8Array(value));
+    }
+    const blob = new Blob(chunks, { type: "audio/mpeg" });
+    currentAudioUrl = URL.createObjectURL(blob);
+    audioEl.src = currentAudioUrl;
+    const speed = parseFloat(
+      shadowRoot.querySelector(".tts-speed-btn.active")?.dataset.speed || "1"
+    );
+    audioEl.playbackRate = speed;
+    audioSection.classList.add("visible");
+    await audioEl.play().catch(() => {});
   }
 
   async function playStreamingAudio(response, audioEl, audioSection) {
@@ -744,12 +756,10 @@ const WIDGET_HTML = `
       audioEl.playbackRate = speed;
 
       mediaSource.addEventListener("sourceopen", async () => {
-        debugLog("MediaSource opened");
         let sourceBuffer;
         try {
           sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
-        } catch (err) {
-          debugLog("Failed to create SourceBuffer:", err);
+        } catch {
           reject(new Error("Failed to initialize audio player"));
           return;
         }
@@ -766,7 +776,6 @@ const WIDGET_HTML = `
 
           appending = true;
           const chunk = queue.shift();
-          debugLog(`Appending chunk: ${chunk.byteLength} bytes, queue: ${queue.length}`);
 
           try {
             sourceBuffer.appendBuffer(chunk);
@@ -776,13 +785,11 @@ const WIDGET_HTML = `
               appending = false;
               const ct = audioEl.currentTime;
               if (sourceBuffer.buffered.length > 0 && ct > 1) {
-                debugLog(`QuotaExceededError, evicting buffer 0-${(ct - 1).toFixed(1)}s`);
                 appending = true;
                 sourceBuffer.remove(0, ct - 1);
                 return; // updateend will call appendNext to retry
               }
             }
-            debugLog("appendBuffer error:", err);
             appending = false;
             reject(err);
           }
@@ -790,9 +797,6 @@ const WIDGET_HTML = `
 
         sourceBuffer.addEventListener("updateend", () => {
           appending = false;
-          debugLog("SourceBuffer updateend, buffered:", sourceBuffer.buffered.length > 0
-            ? `${sourceBuffer.buffered.start(0).toFixed(1)}s - ${sourceBuffer.buffered.end(0).toFixed(1)}s`
-            : "empty");
           if (queue.length > 0) {
             appendNext();
           } else if (onDrain) {
@@ -805,7 +809,6 @@ const WIDGET_HTML = `
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
-              debugLog("Stream complete, total chunks:", audioChunks.length);
               const waitForAppends = () => new Promise((res) => {
                 if (!appending && queue.length === 0) {
                   res();
@@ -817,13 +820,11 @@ const WIDGET_HTML = `
 
               if (mediaSource.readyState === "open") {
                 mediaSource.endOfStream();
-                debugLog("MediaSource endOfStream called");
               }
               resolve();
               return;
             }
 
-            debugLog(`Received chunk: ${value.byteLength} bytes`);
             audioChunks.push(new Uint8Array(value));
             queue.push(value);
 
@@ -833,15 +834,13 @@ const WIDGET_HTML = `
               appendNext();
               sourceBuffer.addEventListener("updateend", function playOnce() {
                 sourceBuffer.removeEventListener("updateend", playOnce);
-                debugLog("First chunk appended, starting playback");
-                audioEl.play().catch((err) => debugLog("Play error:", err));
+                audioEl.play().catch(() => {});
               }, { once: true });
             } else {
               appendNext();
             }
           }
         } catch (err) {
-          debugLog("Stream read error:", err);
           if (mediaSource.readyState === "open") {
             mediaSource.endOfStream("network");
           }
