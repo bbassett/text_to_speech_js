@@ -60,9 +60,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Service account key JSON, stored as one secret in Infisical
     const client = new TextToSpeechClient({
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON!),
     });
 
     const languageCode = voice.split("-").slice(0, 2).join("-");
