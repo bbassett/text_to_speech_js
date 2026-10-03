@@ -7,30 +7,47 @@ A Next.js web app that converts text (or URLs) to speech using Google Cloud Text
 1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the **Cloud Text-to-Speech API**
 3. Create a **Service Account** (IAM & Admin > Service Accounts), grant it the `Cloud Text-to-Speech Admin` role
-4. Generate a JSON key for the service account and save it to the project root (e.g. `google-credentials.json`)
+4. Generate a JSON key for the service account. Its whole contents go into Infisical as `GOOGLE_CREDENTIALS_JSON`
 
-## Configuration
+## Secrets
 
-Create a `.env` file with your values (`npx clerk@latest init` fills in the Clerk keys):
+App secrets live in [Infisical](https://infisical.com) (Cloud US), project
+`voicewhip`, in `dev` (local) and `prod` (deploys) environments:
 
 ```
-GOOGLE_CLOUD_PROJECT_ID=your_project_id
-GOOGLE_APPLICATION_CREDENTIALS=./credentials/google-credentials.json
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
+GOOGLE_CREDENTIALS_JSON             # service account key JSON
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY   # Clerk dashboard -> API keys
+CLERK_SECRET_KEY
+CERTIFICATE_PEM                     # prod only: Cloudflare Origin Certificate for voicewhip.com
+PRIVATE_KEY_PEM                     # prod only
+```
+
+One-time local setup:
+
+```bash
+brew install infisical/get-cli/infisical
+infisical login
+infisical init        # links this repo to the project; commits .infisical.json (not secret)
 ```
 
 ## Getting Started
 
 ```bash
 npm install
-npm run dev
+npm run dev           # runs under `infisical run --env=dev`
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to start TTS'ing.
 
-### Docker
+## Deploying
 
-```bash
-docker compose up
-```
+Pushes to `main` build an image to GHCR and deploy it to the server with
+[Kamal](https://kamal-deploy.org) (`.github/workflows/deploy.yml`, `config/deploy.yml`).
+The site is served at https://voicewhip.com behind Cloudflare.
+
+The workflow needs these on the GitHub repo:
+
+- Secrets: `WG_CONFIG` (WireGuard config to reach the server), `SSH_PRIVATE_KEY`
+- Variables: `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `CLERK_PUBLISHABLE_KEY`
+  (production publishable key, baked into the image at build time)
+- A `production` environment

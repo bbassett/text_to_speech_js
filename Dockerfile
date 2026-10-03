@@ -16,6 +16,12 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Inlined into the client bundle at build time; not a secret
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+ENV NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+
 RUN npm run build
 
 # Production image, copy all the files and run next
