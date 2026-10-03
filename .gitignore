@@ -42,8 +42,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 google-credentials.json
-docs/plans.bak
 
-# Extension build artifacts
-/dist/
 public/google*

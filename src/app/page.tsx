@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { UserButton } from "@clerk/nextjs";
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -23,11 +24,6 @@ export default function Home() {
   const autoConvertDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Uint8Array[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  const TTS_DEBUG = false;
-  const debugLog = (...args: unknown[]) => {
-    if (TTS_DEBUG) console.log("[tts-web]", ...args);
-  };
 
   // Load playback speed and auto-convert from cookies on mount
   useEffect(() => {
@@ -166,10 +162,7 @@ export default function Home() {
     }
   };
 
-  const supportsMseMpeg = () =>
-    typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
-
-  const playStreamingAudioMSE = async (
+  const playStreamingAudio = async (
     response: Response,
     audioElement: HTMLAudioElement
   ): Promise<string> => {
@@ -180,12 +173,10 @@ export default function Home() {
       audioElement.playbackRate = playbackSpeed;
 
       mediaSource.addEventListener("sourceopen", async () => {
-        debugLog("MediaSource opened");
         let sourceBuffer: SourceBuffer;
         try {
           sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
-        } catch (err) {
-          debugLog("Failed to create SourceBuffer:", err);
+        } catch {
           reject(new Error("Failed to initialize audio player"));
           return;
         }
@@ -202,7 +193,6 @@ export default function Home() {
 
           appending = true;
           const chunk = queue.shift()!;
-          debugLog(`Appending chunk: ${chunk.byteLength} bytes, queue: ${queue.length}`);
           try {
             sourceBuffer.appendBuffer(chunk);
           } catch (err) {
@@ -211,13 +201,11 @@ export default function Home() {
               appending = false;
               const ct = audioElement.currentTime;
               if (sourceBuffer.buffered.length > 0 && ct > 1) {
-                debugLog(`QuotaExceededError, evicting buffer 0-${(ct - 1).toFixed(1)}s`);
                 appending = true;
                 sourceBuffer.remove(0, ct - 1);
-                return;
+                return; // updateend will call appendNext to retry
               }
             }
-            debugLog("appendBuffer error:", err);
             appending = false;
             reject(err);
           }
@@ -225,7 +213,6 @@ export default function Home() {
 
         sourceBuffer.addEventListener("updateend", () => {
           appending = false;
-          debugLog("SourceBuffer updateend");
           if (queue.length > 0) {
             appendNext();
           } else if (onDrain) {
@@ -238,7 +225,6 @@ export default function Home() {
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
-              debugLog("Stream complete, total chunks:", audioChunksRef.current.length);
               const waitForAppends = () =>
                 new Promise<void>((res) => {
                   if (!appending && queue.length === 0) {
@@ -250,13 +236,11 @@ export default function Home() {
               await waitForAppends();
               if (mediaSource.readyState === "open") {
                 mediaSource.endOfStream();
-                debugLog("MediaSource endOfStream called");
               }
               resolve(msUrl);
               return;
             }
 
-            debugLog(`Received chunk: ${value.byteLength} bytes`);
             audioChunksRef.current.push(new Uint8Array(value));
             queue.push(value);
 
@@ -267,8 +251,7 @@ export default function Home() {
                 "updateend",
                 function playOnce() {
                   sourceBuffer.removeEventListener("updateend", playOnce);
-                  debugLog("First chunk appended, starting playback");
-                  audioElement.play().catch((err) => debugLog("Play error:", err));
+                  audioElement.play().catch(() => {});
                 },
                 { once: true }
               );
@@ -277,7 +260,6 @@ export default function Home() {
             }
           }
         } catch (err) {
-          debugLog("Stream read error:", err);
           if (mediaSource.readyState === "open") {
             mediaSource.endOfStream("network");
           }
@@ -287,53 +269,26 @@ export default function Home() {
     });
   };
 
-  const playStreamingAudioBlob = async (
+  const playBlobAudio = async (
     response: Response,
     audioElement: HTMLAudioElement
   ): Promise<string> => {
     const reader = response.body!.getReader();
-    let firstChunk = true;
+    const chunks: Uint8Array[] = [];
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          debugLog("Stream complete, total chunks:", audioChunksRef.current.length);
-          break;
-        }
-
-        debugLog(`Received chunk: ${value.byteLength} bytes`);
-        audioChunksRef.current.push(new Uint8Array(value));
-
-        if (firstChunk) {
-          firstChunk = false;
-        }
-      }
-
-      const blob = new Blob(audioChunksRef.current, { type: "audio/mpeg" });
-      const blobUrl = URL.createObjectURL(blob);
-      audioElement.src = blobUrl;
-      audioElement.playbackRate = playbackSpeed;
-
-      debugLog("Blob URL set, starting playback");
-      await audioElement.play().catch((err) => debugLog("Play error:", err));
-      return blobUrl;
-    } catch (err) {
-      debugLog("Stream read error:", err);
-      throw err;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      audioChunksRef.current.push(new Uint8Array(value));
     }
-  };
 
-  const playStreamingAudio = async (
-    response: Response,
-    audioElement: HTMLAudioElement
-  ): Promise<string> => {
-    if (supportsMseMpeg()) {
-      debugLog("Using MSE streaming playback");
-      return playStreamingAudioMSE(response, audioElement);
-    }
-    debugLog("MSE audio/mpeg not supported, using Blob fallback");
-    return playStreamingAudioBlob(response, audioElement);
+    const blob = new Blob(chunks, { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    audioElement.src = url;
+    audioElement.playbackRate = playbackSpeed;
+    await audioElement.play().catch(() => {});
+    return url;
   };
 
   const handleTextToSpeech = async () => {
@@ -360,8 +315,6 @@ export default function Home() {
     setAudioUrl(null);
     audioChunksRef.current = [];
 
-    debugLog("Starting streaming TTS", { textLength: textToConvert.length, voice, playbackSpeed });
-
     try {
       const response = await fetch("/api/tts-stream", {
         method: "POST",
@@ -381,15 +334,17 @@ export default function Home() {
         throw new Error(errorMessage);
       }
 
-      debugLog("Response received, starting audio playback");
+      const mseSupported =
+        typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
       setShowAudio(true);
 
       if (!audioRef.current) throw new Error("Audio element not available");
-      const msUrl = await playStreamingAudio(response, audioRef.current);
+      const msUrl = mseSupported
+        ? await playStreamingAudio(response, audioRef.current)
+        : await playBlobAudio(response, audioRef.current);
       setAudioUrl(msUrl);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        debugLog("Request aborted");
         return;
       }
       console.error("Error generating speech:", error);
@@ -429,10 +384,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md mx-auto">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Text to Speech
           </h1>
+          <UserButton />
         </div>
 
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">

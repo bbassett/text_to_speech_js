@@ -1,26 +1,30 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Expose-Headers": "Content-Type",
-};
+const isApiRoute = createRouteMatcher(["/api(.*)"]);
+// /up is the Kamal healthcheck
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)", "/up"]);
 
-export function middleware(request: NextRequest) {
-  // Handle preflight requests
-  if (request.method === "OPTIONS") {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+export default clerkMiddleware(async (auth, request) => {
+  if (isPublicRoute(request)) return;
+
+  if (isApiRoute(request)) {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return;
   }
 
-  // Add CORS headers to API responses
-  const response = NextResponse.next();
-  for (const [key, value] of Object.entries(CORS_HEADERS)) {
-    response.headers.set(key, value);
-  }
-  return response;
-}
+  // Redirects signed-out visitors to /sign-in
+  await auth.protect();
+});
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: [
+    // Skip Next.js internals and static files
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+    "/__clerk/:path*",
+  ],
 };

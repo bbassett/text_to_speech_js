@@ -1,0 +1,40 @@
+service: text-to-speech
+image: bbassett/text_to_speech_js
+
+servers:
+  web:
+    - 10.8.0.1
+
+ssh:
+  user: deploy
+
+proxy:
+  host: voicewhip.com
+  # Cloudflare proxies this domain (SSL mode "Full (strict)"), so Let's Encrypt can't reach us;
+  # kamal-proxy serves a Cloudflare Origin Certificate instead (stored in Infisical prod).
+  ssl:
+    certificate_pem: CERTIFICATE_PEM
+    private_key_pem: PRIVATE_KEY_PEM
+  app_port: 3000
+  # Healthcheck uses kamal-proxy's default path, /up (public in src/middleware.ts)
+
+registry:
+  server: ghcr.io
+  username: bbassett
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Images are built by the `build` job in .github/workflows/deploy.yml; Kamal only pulls them.
+builder:
+  arch: amd64
+
+env:
+  secret:
+    - CLERK_SECRET_KEY
+    - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+    - GOOGLE_CREDENTIALS_JSON
+
+logging:
+  options:
+    max-size: 10m
+    max-file: 5

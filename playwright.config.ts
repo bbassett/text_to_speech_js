@@ -22,14 +22,6 @@ export default defineConfig({
       testDir: "./tests/web",
       use: { ...devices["Desktop Firefox"] },
     },
-    {
-      name: "chrome-extension",
-      testDir: "./tests/extension",
-    },
-    {
-      name: "firefox-lint",
-      testDir: "./tests/firefox",
-    },
   ],
   webServer: {
     command: "npm run dev",
