@@ -26,6 +26,8 @@ RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
+# Kamal only deploys images whose service label matches config/deploy.yml
+LABEL service="text-to-speech"
 WORKDIR /app
 
 ENV NODE_ENV=production
